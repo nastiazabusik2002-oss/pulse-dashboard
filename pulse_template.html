@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Пульс команди</title>
+<meta name="description" content="Оберіть агента — зміна учора, листи (Zammad) і чати (Симулятор), плюс сім днів динаміки з прив'язкою до графіка змін.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F6F2;
+    --surface:#FFFFFF;
+    --surface-2:#EEF1EC;
+    --ink:#1B211D;
+    --ink-soft:#565F58;
+    --ink-faint:#8B9389;
+    --line:#DCE1D8;
+    --accent:#2E6B63;
+    --accent-strong:#1F4D47;
+    --accent-soft:#DDEBE7;
+    --good:#3E7A46;
+    --good-soft:#E1EFE2;
+    --idle:#8B7A4E;
+    --idle-soft:#F1EADA;
+    --radius:14px;
+    --font-display:'Unbounded','Segoe UI',sans-serif;
+    --font-body:'Golos Text','Segoe UI',-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono','SF Mono',monospace;
+    /* shift categories — fixed identity colors, light mode */
+    --sh-chaty:#3E6FA6;    --sh-chaty-soft:#DEE7F2;
+    --sh-lysty:#2E6B63;    --sh-lysty-soft:#DDEBE7;
+    --sh-fidbek:#A67C2E;   --sh-fidbek-soft:#F1E6CE;
+    --sh-nichna:#7A5FA0;   --sh-nichna-soft:#E7E1F1;
+    --sh-senior:#B05C86;   --sh-senior-soft:#F4E1EB;
+    --sh-vac:#8B7A4E;      --sh-vac-soft:#F1EADA;
+    --sh-off:#8B9389;      --sh-off-soft:#EEF1EC;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14180F; --surface:#1B2119; --surface-2:#212820;
+      --ink:#EDEFE9; --ink-soft:#AEB6A6; --ink-faint:#6C766A; --line:#2B332A;
+      --accent:#7CC3B5; --accent-strong:#9AD6C9; --accent-soft:#1E332E;
+      --good:#7FBF88; --good-soft:#1E3021; --idle:#D8BE84; --idle-soft:#332C1B;
+      --sh-chaty:#8FB4E0;   --sh-chaty-soft:#20293A;
+      --sh-lysty:#7CC3B5;   --sh-lysty-soft:#1E332E;
+      --sh-fidbek:#D8B15E;  --sh-fidbek-soft:#332B18;
+      --sh-nichna:#B79EDB;  --sh-nichna-soft:#2A2438;
+      --sh-senior:#DD9BBD;  --sh-senior-soft:#372430;
+      --sh-vac:#D8BE84;     --sh-vac-soft:#332C1B;
+      --sh-off:#6C766A;     --sh-off-soft:#212820;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14180F; --surface:#1B2119; --surface-2:#212820;
+    --ink:#EDEFE9; --ink-soft:#AEB6A6; --ink-faint:#6C766A; --line:#2B332A;
+    --accent:#7CC3B5; --accent-strong:#9AD6C9; --accent-soft:#1E332E;
+    --good:#7FBF88; --good-soft:#1E3021; --idle:#D8BE84; --idle-soft:#332C1B;
+    --sh-chaty:#8FB4E0;   --sh-chaty-soft:#20293A;
+    --sh-lysty:#7CC3B5;   --sh-lysty-soft:#1E332E;
+    --sh-fidbek:#D8B15E;  --sh-fidbek-soft:#332B18;
+    --sh-nichna:#B79EDB;  --sh-nichna-soft:#2A2438;
+    --sh-senior:#DD9BBD;  --sh-senior-soft:#372430;
+    --sh-vac:#D8BE84;     --sh-vac-soft:#332C1B;
+    --sh-off:#6C766A;     --sh-off-soft:#212820;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;}
+  h1,h2{font-family:var(--font-display); color:var(--ink); text-wrap:balance; margin:0;}
+  a{color:var(--accent-strong);}
+  .wrap{max-width:1720px; margin:0 auto; padding:2.2rem .9rem 4rem;}
+  .eyebrow{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); font-weight:600;}
+
+  header{border-bottom:1px solid var(--line); padding-bottom:1.5rem; margin-bottom:1.6rem;}
+  h1{font-size:clamp(1.5rem,2vw + 1rem,2rem); font-weight:800; margin-top:.35rem;}
+  header p.lede{color:var(--ink-soft); max-width:64ch; margin-top:.5rem; font-size:.92rem;}
+
+  .kpi-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.7rem; margin-top:1.2rem;}
+  .kpi{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:.8rem 1rem;}
+  .kpi .v{font-family:var(--font-mono); font-size:1.35rem; font-weight:600; font-variant-numeric:tabular-nums;}
+  .kpi .l{font-size:.73rem; color:var(--ink-faint); margin-top:.1rem;}
+
+  section{margin-bottom:2.4rem;}
+  section > h2{font-size:1.1rem; font-weight:700; margin-bottom:.25rem;}
+  section > .section-desc{color:var(--ink-soft); font-size:.85rem; margin-bottom:1rem; max-width:64ch;}
+
+  /* ---- agent picker layout ---- */
+  .picker{display:grid; grid-template-columns:280px minmax(0,1fr); gap:1.1rem; align-items:start;}
+  .agent-list{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+  .agent-row{
+    display:flex; align-items:center; gap:.6rem; width:100%; text-align:left;
+    padding:.65rem .9rem; border:none; border-bottom:1px solid var(--line); background:transparent;
+    cursor:pointer; font-family:var(--font-body); color:var(--ink); font-size:.86rem;
+  }
+  .agent-row:last-child{border-bottom:none;}
+  .agent-row:hover{background:var(--surface-2);}
+  .agent-row.active{background:var(--accent-soft);}
+  .agent-row .dot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .agent-row .nm{flex:1; font-weight:600;}
+  .agent-row .tc{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+
+  .detail{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:1.3rem 1.4rem; max-width:900px;}
+  .detail .dname{font-family:var(--font-display); font-size:1.25rem; font-weight:700;}
+  .detail .demail{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-faint); margin-top:.15rem;}
+
+  .shift-card{
+    margin-top:1.1rem; border-radius:12px; padding:.9rem 1.1rem;
+    display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  }
+  .shift-card .sc-label{font-family:var(--font-mono); font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; opacity:.75;}
+  .shift-card .sc-main{font-size:1.05rem; font-weight:700; margin-top:.2rem;}
+  .shift-card .sc-note{font-size:.78rem; margin-top:.3rem; max-width:40ch;}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:.7rem; margin-top:1rem;}
+  .stat{background:var(--surface-2); border-radius:10px; padding:.7rem .85rem;}
+  .stat .v{font-family:var(--font-mono); font-size:1.2rem; font-weight:600; font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:.73rem; color:var(--ink-faint); margin-top:.1rem;}
+  .stat .r{font-size:.78rem; color:var(--ink-soft); margin-top:.35rem;}
+
+  .callout{margin-top:.9rem; background:var(--sh-chaty-soft); color:var(--sh-chaty); border-radius:10px; padding:.7rem .9rem; font-size:.82rem; display:none;}
+  .callout.show{display:block;}
+
+  .week{margin-top:1.3rem;}
+  .week h3{font-size:.82rem; font-weight:700; color:var(--ink-soft); margin:0 0 .6rem;}
+  .week-chart{display:flex; gap:.55rem; align-items:flex-end; height:110px;}
+  .week-day{flex:1; display:flex; flex-direction:column; align-items:center; gap:.4rem; height:100%;}
+  .week-bar-track{flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center;}
+  .week-bar{width:70%; min-height:4px; border-radius:4px 4px 2px 2px;}
+  .week-day .wd-touches{font-family:var(--font-mono); font-size:.68rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  .week-day .wd-label{font-family:var(--font-mono); font-size:.68rem; color:var(--ink-faint); text-transform:uppercase;}
+  .week-legend{display:flex; flex-wrap:wrap; gap:.5rem .9rem; margin-top:.9rem; font-size:.76rem; color:var(--ink-soft);}
+  .week-legend span{display:inline-flex; align-items:center; gap:.35rem;}
+  .lg-dot{width:8px; height:8px; border-radius:50%; display:inline-block;}
+
+  /* ---- range comparison ---- */
+  .range-wrap{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:1.1rem 1.2rem;}
+  .range-controls{display:flex; flex-wrap:wrap; align-items:end; gap:1rem; margin-bottom:1rem;}
+  .range-field{display:flex; flex-direction:column; gap:.3rem;}
+  .range-field label{font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);}
+  .range-field input[type=date]{font-family:var(--font-mono); font-size:.82rem; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:.4rem .55rem; color:var(--ink); color-scheme:light dark;}
+  .range-presets{display:flex; gap:.4rem; flex-wrap:wrap;}
+  .range-preset{font-family:var(--font-mono); font-size:.7rem; text-transform:uppercase; letter-spacing:.03em; background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:.4rem .65rem; cursor:pointer; color:var(--ink-soft);}
+  .range-preset:disabled{opacity:.4; cursor:not-allowed;}
+  .trend-nav{font-family:var(--font-mono); font-size:.7rem; text-transform:uppercase; letter-spacing:.03em; background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:.4rem .65rem; cursor:pointer; color:var(--ink-soft);}
+  .trend-nav:hover:not(:disabled){background:var(--accent-soft); color:var(--accent-strong);}
+  .trend-nav:disabled{opacity:.4; cursor:not-allowed;}
+  .range-preset:hover{background:var(--accent-soft); color:var(--accent-strong);}
+  .range-preset.active{background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent);}
+  .range-span{font-family:var(--font-mono); font-size:.72rem; color:var(--ink-faint); margin-left:auto;}
+  .range-table-wrap{overflow-x:auto;}
+  table.range-table{width:auto; border-collapse:collapse; min-width:640px;}
+  .range-table th, .range-table td{padding:.55rem .7rem; text-align:right; white-space:nowrap;}
+  .range-table th:first-child, .range-table td:first-child{text-align:left;}
+  .range-table thead th{font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); border-bottom:1px solid var(--line); cursor:pointer; user-select:none;}
+  .range-table thead th:hover{color:var(--ink);}
+  .range-table thead th.sorted{color:var(--accent-strong);}
+  .range-table thead th .arrow{font-size:.62rem; margin-left:.15rem; opacity:.8;}
+  .range-table tbody tr{border-bottom:1px solid var(--line);}
+  .range-table tbody tr:last-child{border-bottom:none;}
+  .range-table tbody tr:hover{background:var(--surface-2); cursor:pointer;}
+  .range-table td{font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:.85rem;}
+  .range-table td.name{font-family:var(--font-body); font-weight:600; font-size:.85rem; color:var(--ink);}
+  .range-table td.c-listy{color:var(--accent-strong);}
+  .range-table td.c-fidbek{color:var(--sh-fidbek);}
+  .range-table td.c-chaty{color:var(--sh-chaty);}
+  .range-table td.c-dept{color:var(--sh-senior);}
+  .range-table td.c-total{font-weight:700; color:var(--ink);}
+  .range-table tfoot td{font-weight:700; border-top:2px solid var(--line); color:var(--ink);}
+  .range-note{margin-top:.8rem; font-size:.76rem; color:var(--ink-faint); max-width:70ch;}
+
+  /* ---- rings: per-agent article bar comparison ---- */
+  .rings-wrap{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:1.4rem 1.5rem;}
+  .rings-controls{display:flex; flex-direction:column; gap:.9rem; margin-bottom:1.3rem; padding-bottom:1.1rem; border-bottom:1px solid var(--line);}
+  .rings-control-row{display:flex; align-items:center; gap:1rem; flex-wrap:wrap;}
+  .rings-controls label{font-family:var(--font-mono); font-size:.76rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); flex:0 0 auto;}
+  .rings-controls select{font-family:var(--font-mono); font-size:.95rem; font-weight:600; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:.55rem .75rem; color:var(--ink);}
+  .rings-filters{display:flex; gap:.55rem; flex-wrap:wrap;}
+  .shift-chip{font-family:var(--font-mono); font-size:.85rem; font-weight:600; letter-spacing:.02em; background:var(--surface-2); border:1.5px solid var(--line); border-radius:9px; padding:.6rem 1.05rem; cursor:pointer; color:var(--ink-soft);}
+  .shift-chip.active{background:var(--chip-soft, var(--accent-soft)); color:var(--chip-strong, var(--accent-strong)); border-color:var(--chip-strong, var(--accent));}
+  .bars-scroll{overflow-x:auto;}
+  .bars-chart{display:flex; align-items:flex-end; gap:.6rem; height:210px; padding-top:1.6rem; min-width:max-content;}
+  .bar-col{display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; width:58px; flex:0 0 auto; cursor:pointer; border-radius:8px; padding:.2rem 0;}
+  .bar-col:hover{background:var(--surface-2);}
+  .bar-col.active{background:var(--accent-soft);}
+  .bar-col.active .bar-label{color:var(--accent-strong); font-weight:700;}
+  .trend-drill{margin-top:1.3rem; padding-top:1.1rem; border-top:1px solid var(--line);}
+  .trend-drill-header{display:flex; align-items:center; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:1rem;}
+  .field-label{font-family:var(--font-mono); font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);}
+  .rating-hint{font-size:.76rem; color:var(--ink-faint); margin:0 0 .8rem;}
+  .drill-table th:first-child, .drill-table td:first-child{position:sticky; left:0; background:var(--surface); z-index:1;}
+  .drill-table tbody tr:hover td:first-child{background:var(--surface-2);}
+  .drill-table th.col-active, .drill-table td.col-active{background:var(--accent-soft); color:var(--accent-strong); font-weight:700;}
+  .drill-table td.total{font-weight:700; color:var(--ink); border-left:2px solid var(--line);}
+  .drill-table th.total{border-left:2px solid var(--line);}
+  .drill-table td{padding:.25rem;}
+  .multi-grid{display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; width:74px; height:74px; margin:0 auto; gap:1px; font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+  .multi-grid span{display:flex; align-items:center; justify-content:center; font-size:1.05rem; font-weight:800;}
+
+  table.drill-table{border-collapse:separate; border-spacing:4px; width:auto;}
+  .drill-table th:not(:first-child), .drill-table td:not(.name){width:82px;}
+  .drill-table thead th{border-bottom:none; padding:.35rem .5rem; font-size:.72rem;}
+  .drill-table td.name{border:none; font-size:.9rem; padding-right:.9rem;}
+  .drill-table td:not(.name):not(.col-active){background:var(--surface-2); border:1px solid var(--line); border-radius:9px;}
+  .drill-table td.col-active{border-radius:9px; border:2px solid var(--accent);}
+  .drill-table td.total:not(.col-active){background:var(--surface-2); border:1px solid var(--line); border-radius:9px;}
+  .drill-table th.col-active{border-radius:9px;}
+  .heat-cell{cursor:default;}
+  .trend-drill h3{font-size:.82rem; font-weight:700; color:var(--ink-soft); margin:0;}
+  .trend-drill h3 span{color:var(--accent-strong);}
+
+  .bar-col .bar-value{font-family:var(--font-mono); font-size:.72rem; font-weight:600; color:var(--ink); margin-bottom:.3rem; font-variant-numeric:tabular-nums;}
+  .bar-col .bar-track{width:28px; flex:1; display:flex; align-items:flex-end; border-radius:5px 5px 0 0;}
+  .bar-col .bar-stack{width:100%; display:flex; flex-direction:column-reverse; border-radius:5px 5px 0 0; overflow:hidden; min-height:2px;}
+  .bar-col .bar-seg{width:100%;}
+  .bar-col .bar-label{margin-top:.5rem; font-size:.66rem; line-height:1.2; color:var(--ink-soft); text-align:center; word-break:break-word; max-width:72px;}
+  .bar-col .bar-label-sub{display:block; margin-top:.2rem; font-family:var(--font-mono); font-size:.6rem; text-transform:uppercase; letter-spacing:.02em; color:var(--ink-faint);}
+  .bars-legend{display:flex; flex-wrap:wrap; gap:.5rem 1rem; margin-top:1rem; font-size:.76rem; color:var(--ink-soft);}
+  .bars-legend span{display:inline-flex; align-items:center; gap:.35rem;}
+  .bars-legend .lg-dot{width:9px; height:9px; border-radius:2px; flex:0 0 auto;}
+  .bar-col .bar-seg{cursor:pointer;}
+
+  .chart-tooltip{
+    position:fixed; pointer-events:none; z-index:80; left:0; top:0;
+    background:var(--ink); color:var(--bg); font-family:var(--font-mono); font-size:.78rem;
+    padding:.45rem .65rem; border-radius:7px; box-shadow:0 6px 18px rgba(0,0,0,.28);
+    opacity:0; transform:translate(-50%,-100%); transition:opacity .08s ease; white-space:nowrap;
+  }
+  .chart-tooltip.show{opacity:1;}
+  .chart-tooltip .tt-dot{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:.4rem; vertical-align:middle;}
+  .chart-tooltip .tt-name{font-family:var(--font-body); font-weight:600; display:block; margin-bottom:.15rem;}
+  .rings-empty{color:var(--ink-faint); font-size:.85rem; padding:1rem 0;}
+  .rings-note{margin-top:.9rem; font-size:.76rem; color:var(--ink-faint); max-width:70ch;}
+
+
+  footer{border-top:1px solid var(--line); padding-top:1.2rem; font-size:.8rem; color:var(--ink-faint);}
+
+  @media (max-width: 720px){
+    .picker{grid-template-columns:1fr;}
+    .agent-list{max-height:280px; overflow-y:auto;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">Команда підтримки · TTN Global</span>
+    <h1>Пульс команди</h1>
+    <p class="lede">Обери агента — побачиш зміну вчора і детальний розріз того, що він зробив у Zammad: листи, фідбеки, чати із сайту, передачі в інші відділи, замітки. Плюс сім днів динаміки з прив'язкою до графіка.</p>
+    <div class="kpi-row">
+      <div class="kpi"><div class="v">477</div><div class="l">артиклів команди — учора, 02.09</div></div>
+      <div class="kpi"><div class="v">263</div><div class="l">фідбеків команди — учора</div></div>
+      <div class="kpi"><div class="v">57</div><div class="l">передач в інші відділи — учора</div></div>
+      <div class="kpi"><div class="v">35%</div><div class="l">частка команди в загальному потоці компанії (1 344)</div></div>
+      <div class="kpi"><div class="v">12 / 15</div><div class="l">агентів мали активність учора</div></div>
+      <div class="kpi"><div class="v">2 951</div><div class="l">артиклів команди за тиждень 27.08–02.09</div></div>
+    </div>
+  </header>
+
+  <section id="trend">
+    <h2>Динаміка команди за період</h2>
+    <p class="section-desc">Хто зробив — по днях, всі категорії разом. Обери період (поля Від/До нижче) — таблиця й підсумок оновляться самі.</p>
+    <div class="rings-wrap">
+      <div class="rings-controls">
+        <div class="rings-control-row">
+          <div class="range-field">
+            <label for="trend-from">Від</label>
+            <input type="date" id="trend-from">
+          </div>
+          <div class="range-field">
+            <label for="trend-to">До</label>
+            <input type="date" id="trend-to">
+          </div>
+          <div class="range-presets">
+            <button class="trend-nav" data-trend-preset="7">7 днів</button>
+            <button class="trend-nav" data-trend-preset="14">14 днів</button>
+          </div>
+          <div class="range-span" id="trend-span"></div>
+        </div>
+      </div>
+
+      <div class="trend-drill">
+        <div class="trend-drill-header">
+          <h3>Хто зробив — по днях (<span id="trend-drill-range"></span>)</h3>
+        </div>
+        <p class="rating-hint">У кожній клітинці — всі категорії разом (розбивка на 4 числа: листи · фідбек · чати · інший відділ).</p>
+        <div class="bars-legend">
+          <span><span class="lg-dot" style="background:var(--accent)"></span>Листи</span>
+          <span><span class="lg-dot" style="background:var(--sh-fidbek)"></span>Фідбек</span>
+          <span><span class="lg-dot" style="background:var(--sh-chaty)"></span>Чати</span>
+          <span><span class="lg-dot" style="background:var(--sh-senior)"></span>Інший відділ</span>
+        </div>
+        <div class="range-table-wrap">
+          <table class="range-table drill-table" id="trend-drill-table">
+            <thead><tr id="trend-drill-thead"></tr></thead>
+            <tbody id="trend-drill-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="rings">
+    <h2>Хто скільки зробив</h2>
+    <p class="section-desc">Порівняння по людях за конкретний день — кожен стовпчик розбитий по типу роботи, щоб було видно не тільки скільки всього, а й скільки саме листів, фідбеків, чатів чи передач в інший відділ. Обери час зміни — і порівнюй тільки тих, хто того дня починав роботу в один і той самий час. Клік по стовпчику відкриває картку агента нижче.</p>
+    <div class="rings-wrap">
+      <div class="rings-controls">
+        <div class="rings-control-row">
+          <label for="rings-day">День</label>
+          <select id="rings-day"></select>
+          <div class="range-span" id="rings-count"></div>
+        </div>
+        <div class="rings-control-row">
+          <label>Час зміни</label>
+          <div class="rings-filters" id="rings-filters">
+            <button class="shift-chip active" data-time="all">Всі</button>
+            <button class="shift-chip" data-time="08:00">08:00</button>
+            <button class="shift-chip" data-time="10:00">10:00</button>
+            <button class="shift-chip" data-time="12:00">12:00</button>
+            <button class="shift-chip" data-time="16:00">16:00</button>
+            <button class="shift-chip" data-time="00:00">00:00 (нічна)</button>
+          </div>
+        </div>
+      </div>
+      <div class="bars-scroll" id="rings-list"></div>
+      <div class="bars-legend">
+        <span><span class="lg-dot" style="background:var(--accent)"></span>Листи</span>
+        <span><span class="lg-dot" style="background:var(--sh-fidbek)"></span>Фідбек</span>
+        <span><span class="lg-dot" style="background:var(--sh-chaty)"></span>Чати</span>
+        <span><span class="lg-dot" style="background:var(--sh-senior)"></span>Інший відділ</span>
+      </div>
+      <p class="rings-note">Тут рахуються нові тікети по кожній категорії за день (як і в таблиці «Порівняння по категоріях» вище), а не фактичні артиклі — тому загальна висота стовпчика може трохи відрізнятись від числа в картці агента нижче. Дані точні лише за 27.08–02.09.</p>
+    </div>
+  </section>
+
+  <section id="summary">
+    <h2>Зведення за період</h2>
+    <p class="section-desc">Той самий звіт, що раніше збирався вручну з графіків — листи, чати, кількість змін і середні на зміну. Обери період; для ЗП зазвичай беруть «Минулий тиждень» у понеділок і «Минулий місяць» 1 числа — або постав довільні дати чи один день.</p>
+    <div class="range-wrap">
+      <div class="range-controls">
+        <div class="range-field">
+          <label for="summary-from">Від</label>
+          <input type="date" id="summary-from">
+        </div>
+        <div class="range-field">
+          <label for="summary-to">До</label>
+          <input type="date" id="summary-to">
+        </div>
+        <div class="range-presets" id="summary-presets">
+          <button class="range-preset" data-summary-preset="last-week">Минулий тиждень</button>
+          <button class="range-preset" data-summary-preset="this-month">Поточний місяць</button>
+          <button class="range-preset" data-summary-preset="last-month">Минулий місяць</button>
+        </div>
+        <div class="range-span" id="summary-span"></div>
+      </div>
+      <div class="range-table-wrap">
+        <table class="range-table" id="summary-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th data-key="name">Агент</th>
+              <th data-key="listy">Листи</th>
+              <th data-key="chatz">Чати</th>
+              <th data-key="chatShifts">К-сть змін-чатів</th>
+              <th data-key="avgChat">Ср.чатів/зміна</th>
+              <th data-key="totalShifts">К-сть змін</th>
+              <th data-key="closed">Закрито загалом</th>
+              <th data-key="avgClosed">Ср.закрито загалом</th>
+            </tr>
+          </thead>
+          <tbody id="summary-tbody"></tbody>
+          <tfoot id="summary-tfoot"></tfoot>
+        </table>
+      </div>
+      <p class="range-note" id="summary-note">Листи/Чати — нові тікети за обраний період (те саме джерело, що в таблиці «Порівняння по категоріях» вище; Чати — реальні дані з Simulator, де вже підключено). Закрито загалом = Листи + Чати. Графік змін по днях 20–26.08 — умовний приклад для демонстрації, поки не підключений реальний розклад із Supabase; з 27.08 і далі графік реальний.</p>
+    </div>
+  </section>
+
+  <section id="picker">
+    <h2>По агентах</h2>
+    <p class="section-desc">Зліва — вся команда, відсортована за вчорашньою активністю (листи + фідбеки + передачі). Клікни на ім'я.</p>
+    <div class="picker">
+      <div class="agent-list" id="agent-list"></div>
+      <div class="detail" id="agent-detail"></div>
+    </div>
+  </section>
+
+  <footer>
+    Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
+    Оновлено: 2026-09-03, 13:07 (Europe/Kiev)
+  </footer>
+</div>
+
+<div class="chart-tooltip" id="chart-tooltip"></div>
+
+<script>
+const AGENTS = [{"id":1,"name":"Андріяна Носаль","email":"a.nosal@ttn.global","yday_shift":"Старший агент@10:00","yday_listy":70,"yday_feedback":19,"yday_chats_z":0,"yday_dept":3,"yday_notes":7,"yday_touches_raw":99,"yday_tickets_raw":120,"week_touches":536,"week_tickets":469,"active_days":5,"daily":[{"date":"2026-08-27","touches":81,"tickets":63,"shift":"Старший агент@08:00"},{"date":"2026-08-28","touches":120,"tickets":106,"shift":"ФІДБЕК@08:00"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-31","touches":136,"tickets":121,"shift":"ФІДБЕК@08:00"},{"date":"2026-09-01","touches":109,"tickets":104,"shift":"Старший агент@08:00"},{"date":"2026-09-02","touches":90,"tickets":75,"shift":"Старший агент@10:00"}]},{"id":7,"name":"Христя Малко","email":"k.malko@ttn.global","yday_shift":"OFF","yday_listy":0,"yday_feedback":0,"yday_chats_z":0,"yday_dept":0,"yday_notes":0,"yday_touches_raw":0,"yday_tickets_raw":41,"week_touches":423,"week_tickets":352,"active_days":6,"daily":[{"date":"2026-08-27","touches":112,"tickets":89,"shift":"ФІДБЕК@08:00"},{"date":"2026-08-28","touches":28,"tickets":25,"shift":"ЧАТИ@16:00"},{"date":"2026-08-29","touches":123,"tickets":105,"shift":"ЛИСТИ@08:00"},{"date":"2026-08-30","touches":21,"tickets":17,"shift":"ЧАТИ@08:00"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-09-01","touches":138,"tickets":115,"shift":"ФІДБЕК@16:00"},{"date":"2026-09-02","touches":1,"tickets":1,"shift":"OFF"}]},{"id":2,"name":"Софа Гронська","email":"s.hronska@ttn.global","yday_shift":"OFF","yday_listy":0,"yday_feedback":0,"yday_chats_z":0,"yday_dept":0,"yday_notes":0,"yday_touches_raw":0,"yday_tickets_raw":10,"week_touches":148,"week_tickets":138,"active_days":2,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-08-29","touches":81,"tickets":73,"shift":"ЛИСТИ@16:00"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-09-01","touches":67,"tickets":65,"shift":"ЛИСТИ@08:00"},{"date":"2026-09-02","touches":0,"tickets":0,"shift":"OFF"}]},{"id":14,"name":"Маша Івасюк","email":"m.ivasiuk@ttn.global","yday_shift":"ЧАТИ@08:00","yday_listy":4,"yday_feedback":0,"yday_chats_z":0,"yday_dept":3,"yday_notes":3,"yday_touches_raw":10,"yday_tickets_raw":89,"week_touches":25,"week_tickets":20,"active_days":5,"daily":[{"date":"2026-08-27","touches":2,"tickets":1,"shift":"ЧАТИ@16:00"},{"date":"2026-08-28","touches":1,"tickets":1,"shift":"OFF"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-30","touches":11,"tickets":9,"shift":"ЧАТИ@08:00"},{"date":"2026-08-31","touches":8,"tickets":7,"shift":"ЧАТИ@16:00"},{"date":"2026-09-01","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-09-02","touches":3,"tickets":2,"shift":"ЧАТИ@08:00"}]},{"id":13,"name":"Настя Волосянко","email":"a.volosianko@ttn.global","yday_shift":"ЛИСТИ@08:00","yday_listy":57,"yday_feedback":1,"yday_chats_z":3,"yday_dept":1,"yday_notes":0,"yday_touches_raw":62,"yday_tickets_raw":67,"week_touches":319,"week_tickets":301,"active_days":6,"daily":[{"date":"2026-08-27","touches":108,"tickets":99,"shift":"ФІДБЕК@16:00"},{"date":"2026-08-28","touches":102,"tickets":96,"shift":"ЛИСТИ@08:00"},{"date":"2026-08-29","touches":3,"tickets":3,"shift":"ЧАТИ@08:00"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-31","touches":5,"tickets":5,"shift":"Нічна@00:00"},{"date":"2026-09-01","touches":2,"tickets":2,"shift":"Нічна@00:00"},{"date":"2026-09-02","touches":99,"tickets":96,"shift":"ЛИСТИ@08:00"}]},{"id":9,"name":"Марічка Подвадцятник","email":"m.podvadtsiatnyk@ttn.global","yday_shift":"ФІДБЕК@08:00","yday_listy":4,"yday_feedback":74,"yday_chats_z":0,"yday_dept":2,"yday_notes":1,"yday_touches_raw":81,"yday_tickets_raw":96,"week_touches":112,"week_tickets":112,"active_days":2,"daily":[{"date":"2026-08-27","touches":11,"tickets":11,"shift":"OFF"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-09-01","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-09-02","touches":101,"tickets":101,"shift":"ФІДБЕК@08:00"}]},{"id":126,"name":"Ліля Ірза","email":"l.irza@ttn.global","yday_shift":"OFF","yday_listy":3,"yday_feedback":0,"yday_chats_z":0,"yday_dept":0,"yday_notes":0,"yday_touches_raw":3,"yday_tickets_raw":17,"week_touches":291,"week_tickets":269,"active_days":7,"daily":[{"date":"2026-08-27","touches":7,"tickets":6,"shift":"OFF"},{"date":"2026-08-28","touches":66,"tickets":62,"shift":"ЛИСТИ@16:00"},{"date":"2026-08-29","touches":26,"tickets":25,"shift":"OFF"},{"date":"2026-08-30","touches":96,"tickets":85,"shift":"ЛИСТИ@12:00"},{"date":"2026-08-31","touches":71,"tickets":67,"shift":"ЛИСТИ@16:00"},{"date":"2026-09-01","touches":16,"tickets":15,"shift":"ЧАТИ@16:00"},{"date":"2026-09-02","touches":9,"tickets":9,"shift":"OFF"}]},{"id":6,"name":"Наталя Чикулаєва","email":"n.chykulaieva@ttn.global","yday_shift":"ЧАТИ@16:00","yday_listy":2,"yday_feedback":0,"yday_chats_z":0,"yday_dept":4,"yday_notes":4,"yday_touches_raw":10,"yday_tickets_raw":10,"week_touches":1,"week_tickets":1,"active_days":1,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-09-01","touches":1,"tickets":1,"shift":"ЧАТИ@16:00"},{"date":"2026-09-02","touches":0,"tickets":0,"shift":"ЧАТИ@16:00"}]},{"id":10,"name":"Наталя Телятинська","email":"n.teliatynska@ttn.global","yday_shift":"VAC","yday_listy":0,"yday_feedback":0,"yday_chats_z":0,"yday_dept":0,"yday_notes":0,"yday_touches_raw":0,"yday_tickets_raw":3,"week_touches":0,"week_tickets":0,"active_days":0,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-09-01","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-09-02","touches":0,"tickets":0,"shift":"VAC"}]},{"id":8,"name":"Наталя Грицан","email":"n.hrytsan@ttn.global","yday_shift":"ЧАТИ@08:00","yday_listy":1,"yday_feedback":0,"yday_chats_z":0,"yday_dept":9,"yday_notes":3,"yday_touches_raw":13,"yday_tickets_raw":17,"week_touches":369,"week_tickets":358,"active_days":6,"daily":[{"date":"2026-08-27","touches":86,"tickets":84,"shift":"ЛИСТИ@16:00"},{"date":"2026-08-28","touches":2,"tickets":2,"shift":"OFF"},{"date":"2026-08-29","touches":49,"tickets":46,"shift":"OFF"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-31","touches":136,"tickets":130,"shift":"ФІДБЕК@12:00"},{"date":"2026-09-01","touches":95,"tickets":95,"shift":"ЛИСТИ@16:00"},{"date":"2026-09-02","touches":1,"tickets":1,"shift":"ЧАТИ@08:00"}]},{"id":4,"name":"Катя Козицька","email":"k.kozytska@ttn.global","yday_shift":"ФІДБЕК@16:00","yday_listy":3,"yday_feedback":70,"yday_chats_z":0,"yday_dept":9,"yday_notes":0,"yday_touches_raw":82,"yday_tickets_raw":95,"week_touches":230,"week_tickets":223,"active_days":4,"daily":[{"date":"2026-08-27","touches":1,"tickets":1,"shift":"ЧАТИ@16:00"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-08-29","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-08-31","touches":113,"tickets":111,"shift":"ФІДБЕК@16:00"},{"date":"2026-09-01","touches":8,"tickets":8,"shift":"ЧАТИ@08:00"},{"date":"2026-09-02","touches":108,"tickets":103,"shift":"ФІДБЕК@16:00"}]},{"id":12,"name":"Вова Вульчин","email":"v.vulchyn@ttn.global","yday_shift":"Нічна@00:00","yday_listy":1,"yday_feedback":0,"yday_chats_z":0,"yday_dept":7,"yday_notes":1,"yday_touches_raw":9,"yday_tickets_raw":22,"week_touches":87,"week_tickets":84,"active_days":4,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"Нічна@00:00"},{"date":"2026-08-28","touches":1,"tickets":1,"shift":"Нічна@00:00"},{"date":"2026-08-29","touches":2,"tickets":2,"shift":"Нічна@00:00"},{"date":"2026-08-30","touches":0,"tickets":0,"shift":"Нічна@00:00"},{"date":"2026-08-31","touches":83,"tickets":80,"shift":"ЛИСТИ@08:00"},{"date":"2026-09-01","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-09-02","touches":1,"tickets":1,"shift":"Нічна@00:00"}]},{"id":118,"name":"Таня Швець","email":"t.shvets@ttn.global","yday_shift":"ЛИСТИ@16:00","yday_listy":37,"yday_feedback":7,"yday_chats_z":0,"yday_dept":1,"yday_notes":0,"yday_touches_raw":45,"yday_tickets_raw":51,"week_touches":268,"week_tickets":264,"active_days":5,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"ЧАТИ@08:00"},{"date":"2026-08-28","touches":59,"tickets":57,"shift":"ФІДБЕК@16:00"},{"date":"2026-08-29","touches":48,"tickets":48,"shift":"ФІДБЕК@12:00"},{"date":"2026-08-30","touches":90,"tickets":89,"shift":"ФІДБЕК@12:00"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"ЧАТИ@16:00"},{"date":"2026-09-01","touches":11,"tickets":11,"shift":"ЧАТИ@08:00"},{"date":"2026-09-02","touches":60,"tickets":59,"shift":"ЛИСТИ@16:00"}]},{"id":11,"name":"Нікіта Крапівной","email":"n.krapivnoy@ttn.global","yday_shift":"ЧАТИ@16:00","yday_listy":2,"yday_feedback":1,"yday_chats_z":0,"yday_dept":6,"yday_notes":3,"yday_touches_raw":12,"yday_tickets_raw":14,"week_touches":134,"week_tickets":132,"active_days":5,"daily":[{"date":"2026-08-27","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"VAC"},{"date":"2026-08-29","touches":2,"tickets":2,"shift":"ЧАТИ@16:00"},{"date":"2026-08-30","touches":2,"tickets":2,"shift":"ЧАТИ@16:00"},{"date":"2026-08-31","touches":5,"tickets":4,"shift":"ЧАТИ@08:00"},{"date":"2026-09-01","touches":124,"tickets":123,"shift":"ФІДБЕК@08:00"},{"date":"2026-09-02","touches":1,"tickets":1,"shift":"ЧАТИ@16:00"}]},{"id":128,"name":"Саша Радзімінський","email":"o.radziminskyi@ttn.global","yday_shift":"ЧАТИ@16:00","yday_listy":3,"yday_feedback":1,"yday_chats_z":0,"yday_dept":7,"yday_notes":3,"yday_touches_raw":14,"yday_tickets_raw":12,"week_touches":8,"week_tickets":8,"active_days":5,"daily":[{"date":"2026-08-27","touches":1,"tickets":1,"shift":"OFF"},{"date":"2026-08-28","touches":0,"tickets":0,"shift":"ЧАТИ@16:00"},{"date":"2026-08-29","touches":2,"tickets":2,"shift":"ЧАТИ@16:00"},{"date":"2026-08-30","touches":1,"tickets":1,"shift":"ЧАТИ@16:00"},{"date":"2026-08-31","touches":0,"tickets":0,"shift":"OFF"},{"date":"2026-09-01","touches":1,"tickets":1,"shift":"ЧАТИ@16:00"},{"date":"2026-09-02","touches":3,"tickets":3,"shift":"ЧАТИ@16:00"}]}];
+const RANGE_DATA = {"2026-08-20":{"1":{"listy":97,"feedback":40,"chatz":0,"dept":6},"7":{"listy":57,"feedback":0,"chatz":0,"dept":4},"2":{"listy":3,"feedback":66,"chatz":0,"dept":0},"14":{"listy":77,"feedback":21,"chatz":9,"dept":10},"13":{"listy":4,"feedback":0,"chatz":8,"dept":3},"9":{"listy":2,"feedback":0,"chatz":142,"dept":6},"126":{"listy":0,"feedback":5,"chatz":0,"dept":1},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":2,"feedback":1,"chatz":132,"dept":5},"8":{"listy":1,"feedback":20,"chatz":0,"dept":7},"4":{"listy":28,"feedback":0,"chatz":112,"dept":5},"12":{"listy":1,"feedback":0,"chatz":153,"dept":9},"118":{"listy":2,"feedback":75,"chatz":0,"dept":0},"11":{"listy":0,"feedback":6,"chatz":0,"dept":0},"128":{"listy":3,"feedback":0,"chatz":79,"dept":8}},"2026-08-21":{"1":{"listy":43,"feedback":13,"chatz":0,"dept":10},"7":{"listy":97,"feedback":9,"chatz":0,"dept":3},"2":{"listy":1,"feedback":39,"chatz":0,"dept":3},"14":{"listy":37,"feedback":0,"chatz":0,"dept":4},"13":{"listy":1,"feedback":0,"chatz":0,"dept":0},"9":{"listy":5,"feedback":3,"chatz":147,"dept":13},"126":{"listy":6,"feedback":58,"chatz":0,"dept":0},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":5,"feedback":83,"chatz":0,"dept":9},"8":{"listy":6,"feedback":0,"chatz":105,"dept":12},"4":{"listy":63,"feedback":7,"chatz":105,"dept":9},"12":{"listy":1,"feedback":0,"chatz":119,"dept":2},"118":{"listy":7,"feedback":41,"chatz":81,"dept":4},"11":{"listy":0,"feedback":12,"chatz":0,"dept":0},"128":{"listy":0,"feedback":0,"chatz":0,"dept":0}},"2026-08-22":{"1":{"listy":61,"feedback":22,"chatz":0,"dept":9},"7":{"listy":27,"feedback":23,"chatz":0,"dept":4},"2":{"listy":10,"feedback":1,"chatz":48,"dept":3},"14":{"listy":19,"feedback":2,"chatz":0,"dept":0},"13":{"listy":0,"feedback":1,"chatz":0,"dept":0},"9":{"listy":52,"feedback":17,"chatz":0,"dept":0},"126":{"listy":4,"feedback":5,"chatz":65,"dept":10},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":6,"feedback":119,"chatz":218,"dept":11},"8":{"listy":1,"feedback":0,"chatz":0,"dept":0},"4":{"listy":10,"feedback":44,"chatz":1,"dept":0},"12":{"listy":1,"feedback":0,"chatz":0,"dept":0},"118":{"listy":2,"feedback":1,"chatz":67,"dept":3},"11":{"listy":0,"feedback":1,"chatz":0,"dept":0},"128":{"listy":2,"feedback":0,"chatz":81,"dept":8}},"2026-08-23":{"1":{"listy":21,"feedback":60,"chatz":0,"dept":0},"7":{"listy":1,"feedback":25,"chatz":0,"dept":0},"2":{"listy":63,"feedback":2,"chatz":0,"dept":0},"14":{"listy":40,"feedback":12,"chatz":69,"dept":4},"13":{"listy":6,"feedback":0,"chatz":0,"dept":0},"9":{"listy":41,"feedback":3,"chatz":106,"dept":15},"126":{"listy":0,"feedback":3,"chatz":15,"dept":0},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":1,"feedback":1,"chatz":166,"dept":13},"8":{"listy":3,"feedback":5,"chatz":0,"dept":11},"4":{"listy":5,"feedback":16,"chatz":0,"dept":2},"12":{"listy":0,"feedback":0,"chatz":0,"dept":0},"118":{"listy":0,"feedback":50,"chatz":79,"dept":5},"11":{"listy":0,"feedback":16,"chatz":0,"dept":0},"128":{"listy":6,"feedback":1,"chatz":62,"dept":7}},"2026-08-24":{"1":{"listy":5,"feedback":9,"chatz":0,"dept":8},"7":{"listy":4,"feedback":47,"chatz":0,"dept":13},"2":{"listy":87,"feedback":0,"chatz":0,"dept":2},"14":{"listy":29,"feedback":8,"chatz":27,"dept":4},"13":{"listy":11,"feedback":0,"chatz":0,"dept":0},"9":{"listy":36,"feedback":3,"chatz":0,"dept":0},"126":{"listy":8,"feedback":35,"chatz":0,"dept":4},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":2,"feedback":0,"chatz":80,"dept":10},"8":{"listy":3,"feedback":4,"chatz":141,"dept":14},"4":{"listy":8,"feedback":25,"chatz":99,"dept":10},"12":{"listy":0,"feedback":1,"chatz":0,"dept":0},"118":{"listy":3,"feedback":15,"chatz":71,"dept":1},"11":{"listy":1,"feedback":47,"chatz":0,"dept":0},"128":{"listy":7,"feedback":0,"chatz":64,"dept":5}},"2026-08-25":{"1":{"listy":60,"feedback":42,"chatz":0,"dept":7},"7":{"listy":0,"feedback":1,"chatz":0,"dept":0},"2":{"listy":48,"feedback":5,"chatz":0,"dept":3},"14":{"listy":3,"feedback":1,"chatz":90,"dept":3},"13":{"listy":49,"feedback":1,"chatz":0,"dept":0},"9":{"listy":6,"feedback":13,"chatz":0,"dept":2},"126":{"listy":7,"feedback":21,"chatz":0,"dept":10},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":2,"feedback":0,"chatz":29,"dept":8},"8":{"listy":21,"feedback":3,"chatz":142,"dept":10},"4":{"listy":1,"feedback":3,"chatz":0,"dept":8},"12":{"listy":4,"feedback":43,"chatz":126,"dept":6},"118":{"listy":0,"feedback":3,"chatz":72,"dept":3},"11":{"listy":0,"feedback":62,"chatz":0,"dept":0},"128":{"listy":3,"feedback":0,"chatz":67,"dept":5}},"2026-08-26":{"1":{"listy":75,"feedback":20,"chatz":0,"dept":11},"7":{"listy":8,"feedback":40,"chatz":96,"dept":8},"2":{"listy":7,"feedback":0,"chatz":0,"dept":3},"14":{"listy":0,"feedback":0,"chatz":21,"dept":0},"13":{"listy":49,"feedback":1,"chatz":0,"dept":4},"9":{"listy":6,"feedback":52,"chatz":0,"dept":6},"126":{"listy":12,"feedback":1,"chatz":84,"dept":16},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":1,"feedback":0,"chatz":0,"dept":0},"8":{"listy":50,"feedback":0,"chatz":140,"dept":6},"4":{"listy":4,"feedback":2,"chatz":104,"dept":4},"12":{"listy":3,"feedback":2,"chatz":0,"dept":6},"118":{"listy":0,"feedback":1,"chatz":0,"dept":0},"11":{"listy":0,"feedback":12,"chatz":0,"dept":0},"128":{"listy":6,"feedback":0,"chatz":75,"dept":7}},"2026-08-27":{"1":{"listy":117,"feedback":70,"chatz":0,"dept":13},"7":{"listy":6,"feedback":8,"chatz":0,"dept":8},"2":{"listy":12,"feedback":0,"chatz":50,"dept":2},"14":{"listy":2,"feedback":2,"chatz":100,"dept":4},"13":{"listy":29,"feedback":26,"chatz":0,"dept":5},"9":{"listy":0,"feedback":0,"chatz":0,"dept":0},"126":{"listy":49,"feedback":0,"chatz":0,"dept":1},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":7,"feedback":0,"chatz":0,"dept":3},"4":{"listy":4,"feedback":2,"chatz":103,"dept":5},"12":{"listy":3,"feedback":1,"chatz":130,"dept":4},"118":{"listy":2,"feedback":7,"chatz":67,"dept":1},"11":{"listy":0,"feedback":1,"chatz":0,"dept":0},"128":{"listy":0,"feedback":0,"chatz":2,"dept":0}},"2026-08-28":{"1":{"listy":2,"feedback":36,"chatz":0,"dept":4},"7":{"listy":55,"feedback":32,"chatz":97,"dept":11},"2":{"listy":84,"feedback":4,"chatz":45,"dept":3},"14":{"listy":1,"feedback":1,"chatz":8,"dept":0},"13":{"listy":13,"feedback":0,"chatz":0,"dept":2},"9":{"listy":0,"feedback":0,"chatz":0,"dept":0},"126":{"listy":10,"feedback":0,"chatz":0,"dept":5},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":1,"feedback":25,"chatz":0,"dept":1},"4":{"listy":3,"feedback":1,"chatz":102,"dept":8},"12":{"listy":5,"feedback":0,"chatz":143,"dept":14},"118":{"listy":0,"feedback":3,"chatz":0,"dept":1},"11":{"listy":2,"feedback":2,"chatz":0,"dept":0},"128":{"listy":6,"feedback":0,"chatz":77,"dept":4}},"2026-08-29":{"1":{"listy":0,"feedback":78,"chatz":0,"dept":0},"7":{"listy":24,"feedback":6,"chatz":0,"dept":7},"2":{"listy":8,"feedback":0,"chatz":0,"dept":3},"14":{"listy":0,"feedback":2,"chatz":0,"dept":0},"13":{"listy":4,"feedback":1,"chatz":81,"dept":5},"9":{"listy":0,"feedback":1,"chatz":0,"dept":0},"126":{"listy":37,"feedback":1,"chatz":0,"dept":1},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":4,"feedback":21,"chatz":0,"dept":2},"4":{"listy":4,"feedback":42,"chatz":86,"dept":5},"12":{"listy":48,"feedback":1,"chatz":111,"dept":1},"118":{"listy":0,"feedback":1,"chatz":0,"dept":0},"11":{"listy":7,"feedback":1,"chatz":121,"dept":12},"128":{"listy":2,"feedback":1,"chatz":82,"dept":7}},"2026-08-30":{"1":{"listy":5,"feedback":20,"chatz":0,"dept":0},"7":{"listy":4,"feedback":3,"chatz":85,"dept":13},"2":{"listy":12,"feedback":0,"chatz":0,"dept":0},"14":{"listy":2,"feedback":2,"chatz":108,"dept":10},"13":{"listy":4,"feedback":2,"chatz":0,"dept":1},"9":{"listy":0,"feedback":0,"chatz":0,"dept":0},"126":{"listy":43,"feedback":0,"chatz":0,"dept":5},"6":{"listy":0,"feedback":0,"chatz":0,"dept":0},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":1,"feedback":60,"chatz":0,"dept":0},"4":{"listy":0,"feedback":12,"chatz":0,"dept":0},"12":{"listy":22,"feedback":1,"chatz":121,"dept":4},"118":{"listy":1,"feedback":0,"chatz":0,"dept":0},"11":{"listy":4,"feedback":0,"chatz":116,"dept":10},"128":{"listy":2,"feedback":0,"chatz":71,"dept":6}},"2026-08-31":{"1":{"listy":4,"feedback":16,"chatz":0,"dept":3},"7":{"listy":1,"feedback":41,"chatz":0,"dept":0},"2":{"listy":47,"feedback":2,"chatz":51,"dept":4},"14":{"listy":4,"feedback":2,"chatz":88,"dept":8},"13":{"listy":40,"feedback":0,"chatz":99,"dept":9},"9":{"listy":0,"feedback":16,"chatz":0,"dept":0},"126":{"listy":8,"feedback":0,"chatz":0,"dept":7},"6":{"listy":1,"feedback":1,"chatz":0,"dept":0},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":138,"feedback":21,"chatz":0,"dept":10},"4":{"listy":7,"feedback":35,"chatz":0,"dept":7},"12":{"listy":3,"feedback":1,"chatz":0,"dept":3},"118":{"listy":4,"feedback":1,"chatz":74,"dept":3},"11":{"listy":4,"feedback":4,"chatz":132,"dept":8},"128":{"listy":0,"feedback":0,"chatz":1,"dept":0}},"2026-09-01":{"1":{"listy":17,"feedback":11,"chatz":0,"dept":5},"7":{"listy":6,"feedback":26,"chatz":1,"dept":12},"2":{"listy":1,"feedback":1,"chatz":0,"dept":1},"14":{"listy":8,"feedback":0,"chatz":5,"dept":0},"13":{"listy":84,"feedback":0,"chatz":139,"dept":3},"9":{"listy":3,"feedback":64,"chatz":0,"dept":0},"126":{"listy":7,"feedback":0,"chatz":75,"dept":13},"6":{"listy":4,"feedback":0,"chatz":121,"dept":7},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":11,"feedback":0,"chatz":0,"dept":4},"4":{"listy":1,"feedback":17,"chatz":95,"dept":6},"12":{"listy":2,"feedback":0,"chatz":0,"dept":7},"118":{"listy":43,"feedback":4,"chatz":91,"dept":1},"11":{"listy":0,"feedback":0,"chatz":0,"dept":2},"128":{"listy":5,"feedback":0,"chatz":68,"dept":2}},"2026-09-02":{"1":{"listy":85,"feedback":5,"chatz":0,"dept":3},"7":{"listy":0,"feedback":36,"chatz":0,"dept":0},"2":{"listy":0,"feedback":0,"chatz":0,"dept":0},"14":{"listy":56,"feedback":11,"chatz":85,"dept":4},"13":{"listy":2,"feedback":0,"chatz":0,"dept":1},"9":{"listy":1,"feedback":1,"chatz":0,"dept":2},"126":{"listy":1,"feedback":0,"chatz":5,"dept":0},"6":{"listy":2,"feedback":0,"chatz":113,"dept":4},"10":{"listy":0,"feedback":0,"chatz":0,"dept":0},"8":{"listy":1,"feedback":0,"chatz":112,"dept":10},"4":{"listy":6,"feedback":51,"chatz":0,"dept":9},"12":{"listy":2,"feedback":0,"chatz":185,"dept":7},"118":{"listy":7,"feedback":7,"chatz":0,"dept":1},"11":{"listy":4,"feedback":0,"chatz":148,"dept":7},"128":{"listy":2,"feedback":1,"chatz":71,"dept":9}}};
+
+const SHIFT_CAT = (shift) => {
+  if(shift==='VAC') return 'vac';
+  if(shift==='OFF') return 'off';
+  if(shift.startsWith('ЧАТИ')) return 'chaty';
+  if(shift.startsWith('ЛИСТИ')) return 'lysty';
+  if(shift.startsWith('ФІДБЕК')) return 'fidbek';
+  if(shift.startsWith('Нічна')) return 'nichna';
+  if(shift.startsWith('Старший')) return 'senior';
+  return 'off';
+};
+const CAT_LABEL = {chaty:'Чати', lysty:'Листи', fidbek:'Фідбек', nichna:'Нічна', senior:'Старший агент', vac:'Відпустка', off:'Вихідний'};
+
+function shiftDisplay(shift){
+  const cat = SHIFT_CAT(shift);
+  if(cat==='vac') return {cat, main:'Відпустка', note:''};
+  if(cat==='off') return {cat, main:'Вихідний', note:''};
+  const time = shift.split('@')[1] || '';
+  return {cat, main: CAT_LABEL[cat] + (time ? ' · ' + time : ''), note:''};
+}
+
+let selectedId = AGENTS[0].id;
+
+function totalActivity(a){ return a.yday_listy + a.yday_feedback + a.yday_chats_z + a.yday_dept; }
+
+function renderList(){
+  const list = document.getElementById('agent-list');
+  const sorted = [...AGENTS].sort((a,b)=>totalActivity(b)-totalActivity(a));
+  list.innerHTML = sorted.map(a=>{
+    const cat = SHIFT_CAT(a.yday_shift);
+    return `<button class="agent-row ${a.id===selectedId?'active':''}" data-id="${a.id}">
+      <span class="dot" style="background:var(--sh-${cat})"></span>
+      <span class="nm">${a.name}</span>
+      <span class="tc">${totalActivity(a)}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.agent-row').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ selectedId = Number(btn.dataset.id); renderList(); renderDetail(); });
+  });
+}
+
+function renderDetail(){
+  const a = AGENTS.find(x=>x.id===selectedId);
+  const sd = shiftDisplay(a.yday_shift);
+  const maxTouch = Math.max(...a.daily.map(d=>d.touches), 1);
+  const WD = ['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ'];
+  const dateObjs = a.daily.map(d=>new Date(d.date+'T00:00:00'));
+
+  const weekBars = a.daily.map((d,i)=>{
+    const cat = SHIFT_CAT(d.shift);
+    const h = Math.max(Math.round((d.touches/maxTouch)*100),4);
+    const sdd = shiftDisplay(d.shift);
+    return `<div class="week-day">
+      <div class="week-bar-track">
+        <div class="week-bar" style="height:${h}%;background:var(--sh-${cat})" title="${d.date} · ${sdd.main} · ${d.touches} артиклів"></div>
+      </div>
+      <div class="wd-touches">${d.touches||'—'}</div>
+      <div class="wd-label">${WD[dateObjs[i].getDay()]}</div>
+    </div>`;
+  }).join('');
+
+  const legendCats = [...new Set(a.daily.map(d=>SHIFT_CAT(d.shift)))];
+  const legend = legendCats.map(c=>`<span><span class="lg-dot" style="background:var(--sh-${c})"></span>${CAT_LABEL[c]}</span>`).join('');
+
+  document.getElementById('agent-detail').innerHTML = `
+    <div class="dname">${a.name}</div>
+    <div class="demail">${a.email}</div>
+    <div class="shift-card" style="background:var(--sh-${sd.cat}-soft);color:var(--sh-${sd.cat})">
+      <div>
+        <div class="sc-label">Зміна учора, 02.09</div>
+        <div class="sc-main">${sd.main}</div>
+      </div>
+    </div>
+    <div class="stat-grid cats">
+      <div class="stat" style="background:var(--accent-soft)"><div class="v" style="color:var(--accent-strong)">${a.yday_listy}</div><div class="l">листів</div></div>
+      <div class="stat" style="background:var(--sh-fidbek-soft)"><div class="v" style="color:var(--sh-fidbek)">${a.yday_feedback}</div><div class="l">фідбеків</div></div>
+      <div class="stat" style="background:var(--sh-chaty-soft)"><div class="v" style="color:var(--sh-chaty)">${a.yday_chats_z}</div><div class="l">чатів із сайту</div></div>
+      <div class="stat" style="background:var(--sh-senior-soft)"><div class="v" style="color:var(--sh-senior)">${a.yday_dept}</div><div class="l">передач у відділ</div></div>
+      <div class="stat" style="background:var(--sh-nichna-soft)"><div class="v" style="color:var(--sh-nichna)">${a.yday_notes}</div><div class="l">заміток</div></div>
+    </div>
+    <div class="stat-grid" style="margin-top:.6rem">
+      <div class="stat"><div class="v">${a.yday_touches_raw}</div><div class="l">артиклів учора всього</div></div>
+      <div class="stat"><div class="v">${a.week_touches}</div><div class="l">артиклів за тиждень</div></div>
+      <div class="stat"><div class="v">${a.active_days} / 7</div><div class="l">активних днів</div></div>
+    </div>
+    <div class="week">
+      <h3>Останні 7 днів (артиклі + зміна)</h3>
+      <div class="week-chart">${weekBars}</div>
+      <div class="week-legend">${legend}</div>
+    </div>
+  `;
+}
+
+const RANGE_MIN = '2026-08-20';
+const RANGE_MAX = '2026-09-02';
+
+// Розклад для «Зведення за період» на весь RANGE_MIN..RANGE_MAX (не тільки
+// 7-денне вікно AGENTS.daily) — наповнюється app.py з реального Supabase-
+// розкладу при кожному оновленні. Порожньо тут — це лише статичний приклад
+// (Artifact без бекенду); в проді буде повний об'єкт.
+const SHIFTS_RANGE = {};
+
+function getShiftForDate(agentId, date){
+  const a = AGENTS.find(x=>x.id===agentId);
+  const entry = a && a.daily.find(d=>d.date===date);
+  if(entry) return entry.shift;
+  const fromRange = SHIFTS_RANGE[date];
+  return (fromRange && fromRange[String(agentId)]) || 'OFF';
+}
+function shiftDate(dateStr, days){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m-1, d));
+  dt.setUTCDate(dt.getUTCDate()+days);
+  return dt.toISOString().slice(0,10);
+}
+
+function datesBetween(from, to){
+  const out = [];
+  let d = from;
+  while(d <= to){ out.push(d); d = shiftDate(d, 1); }
+  return out;
+}
+
+function fmtDateShort(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return `${d}.${String(m).padStart(2,'0')}`;
+}
+
+function showChartTooltip(html, x, y){
+  const tt = document.getElementById('chart-tooltip');
+  tt.innerHTML = html;
+  tt.style.left = x+'px';
+  tt.style.top = (y-10)+'px';
+  tt.classList.add('show');
+}
+function moveChartTooltip(x, y){
+  const tt = document.getElementById('chart-tooltip');
+  tt.style.left = x+'px';
+  tt.style.top = (y-10)+'px';
+}
+function hideChartTooltip(){
+  document.getElementById('chart-tooltip').classList.remove('show');
+}
+
+let ringsFilterTime = 'all';
+
+const RINGS_SEGS = [
+  {key:'listy', color:'var(--accent)', label:'листів'},
+  {key:'feedback', color:'var(--sh-fidbek)', label:'фідбеків'},
+  {key:'chatz', color:'var(--sh-chaty)', label:'чатів'},
+  {key:'dept', color:'var(--sh-senior)', label:'передач'},
+];
+
+function renderRings(){
+  const daySelect = document.getElementById('rings-day');
+  const date = daySelect.value;
+  const dayCats = RANGE_DATA[date] || {};
+
+  let rows = AGENTS.map(a=>{
+    const d = a.daily.find(x=>x.date===date);
+    const shift = d ? d.shift : 'OFF';
+    const cat = SHIFT_CAT(shift);
+    const time = shift.includes('@') ? shift.split('@')[1] : null;
+    const c = dayCats[a.id] || {listy:0, feedback:0, chatz:0, dept:0};
+    const total = c.listy + c.feedback + c.chatz + c.dept;
+    return {id:a.id, name:a.name, cats:c, total, cat, time, shiftMain: shiftDisplay(shift).main};
+  });
+  if(ringsFilterTime !== 'all'){
+    rows = rows.filter(r=>r.time===ringsFilterTime);
+  }
+  rows.sort((a,b)=>b.total-a.total);
+
+  const chart = document.getElementById('rings-list');
+  const countEl = document.getElementById('rings-count');
+
+  if(!rows.length){
+    chart.innerHTML = `<p class="rings-empty">Того дня на цій зміні ніхто не працював.</p>`;
+    countEl.textContent = '';
+    return;
+  }
+
+  const max = Math.max(...rows.map(r=>r.total), 1);
+  chart.innerHTML = `<div class="bars-chart">${rows.map(r=>{
+    const outerPct = Math.max(Math.round((r.total/max)*100), r.total>0 ? 2 : 0);
+    const segsHtml = RINGS_SEGS.map(s=>{
+      const v = r.cats[s.key] || 0;
+      if(!v) return '';
+      const segPct = (v/r.total*100).toFixed(2);
+      return `<div class="bar-seg" style="height:${segPct}%;background:${s.color}" data-name="${r.name}" data-label="${s.label}" data-value="${v}" data-color="${s.color}"></div>`;
+    }).join('');
+    return `
+    <div class="bar-col" data-id="${r.id}" data-name="${r.name}" data-shift="${r.shiftMain}" data-total="${r.total}">
+      <div class="bar-value">${r.total}</div>
+      <div class="bar-track"><div class="bar-stack" style="height:${outerPct}%">${segsHtml}</div></div>
+      <div class="bar-label">${r.name}</div>
+    </div>`;
+  }).join('')}</div>`;
+
+  countEl.textContent = `${rows.length} ${rows.length===1?'агент':'агентів'} цього дня`;
+
+  chart.querySelectorAll('.bar-col').forEach(col=>{
+    col.addEventListener('click', ()=>{
+      selectedId = Number(col.dataset.id);
+      renderList(); renderDetail();
+      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+
+  chart.querySelectorAll('.bar-seg').forEach(seg=>{
+    seg.addEventListener('mouseenter', (e)=>{
+      showChartTooltip(`<span class="tt-name">${seg.dataset.name}</span><span class="tt-dot" style="background:${seg.dataset.color}"></span>${seg.dataset.label}: <strong>${seg.dataset.value}</strong>`, e.clientX, e.clientY);
+    });
+    seg.addEventListener('mousemove', (e)=>{ moveChartTooltip(e.clientX, e.clientY); });
+    seg.addEventListener('mouseleave', hideChartTooltip);
+  });
+}
+
+function initRings(){
+  const daySelect = document.getElementById('rings-day');
+  const dates = AGENTS[0].daily.map(d=>d.date);
+  const WD = ['нд','пн','вт','ср','чт','пт','сб'];
+  daySelect.innerHTML = dates.map(d=>{
+    const [y,m,dd] = d.split('-').map(Number);
+    const wd = WD[new Date(Date.UTC(y,m-1,dd)).getUTCDay()];
+    return `<option value="${d}">${dd}.${String(m).padStart(2,'0')} (${wd})</option>`;
+  }).join('');
+  daySelect.value = dates[dates.length-1];
+  daySelect.addEventListener('change', renderRings);
+
+  document.querySelectorAll('#rings-filters .shift-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      ringsFilterTime = chip.dataset.time;
+      document.querySelectorAll('#rings-filters .shift-chip').forEach(c=>c.classList.toggle('active', c===chip));
+      renderRings();
+    });
+  });
+
+  renderRings();
+}
+
+const WD_UA = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+let selectedTrendDate = null;
+
+const TOUCHES_DATES = new Set(AGENTS[0].daily.map(d=>d.date));
+
+function multiGridHTML(cats){
+  return `<div class="multi-grid">
+    <span style="color:var(--accent)">${cats.listy||0}</span>
+    <span style="color:var(--sh-fidbek)">${cats.feedback||0}</span>
+    <span style="color:var(--sh-chaty)">${cats.chatz||0}</span>
+    <span style="color:var(--sh-senior)">${cats.dept||0}</span>
+  </div>`;
+}
+
+function catsTooltipText(cats){
+  return `${cats.listy||0} листів · ${cats.feedback||0} фідбеків · ${cats.chatz||0} чатів · ${cats.dept||0} передач в інший відділ`;
+}
+
+function heatColor(t){
+  const red = [214, 92, 92], green = [86, 163, 108];
+  const c = red.map((v,i)=> Math.round(v + (green[i]-v)*t));
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, 0.26)`;
+}
+
+function renderTrendDrill(){
+  const fromInput = document.getElementById('trend-from');
+  const toInput = document.getElementById('trend-to');
+  let from = fromInput.value || shiftDate(RANGE_MAX, -6);
+  let to = toInput.value || RANGE_MAX;
+  if(from < RANGE_MIN) from = RANGE_MIN;
+  if(to > RANGE_MAX) to = RANGE_MAX;
+  if(from > to) from = to;
+  fromInput.value = from; toInput.value = to;
+  const days = datesBetween(from, to);
+
+  if(!selectedTrendDate || selectedTrendDate < from || selectedTrendDate > to){
+    selectedTrendDate = days[days.length-1];
+  }
+
+  document.getElementById('trend-span').textContent = `${fmtDateShort(from)} – ${fmtDateShort(to)} · ${days.length} дн.`;
+  document.getElementById('trend-drill-range').textContent = `${fmtDateShort(from)} – ${fmtDateShort(to)}`;
+
+  const dayMeta = days.map(d=>{
+    const [y,m,dd] = d.split('-').map(Number);
+    const wd = WD_UA[new Date(Date.UTC(y,m-1,dd)).getUTCDay()];
+    return {date:d, wd, dateShort:`${dd}.${String(m).padStart(2,'0')}`};
+  });
+
+  const rows = AGENTS.map(a=>{
+    const perDay = {};
+    const totalCats = {listy:0, feedback:0, chatz:0, dept:0};
+    days.forEach(d=>{
+      const c = (RANGE_DATA[d] || {})[a.id] || {listy:0, feedback:0, chatz:0, dept:0};
+      perDay[d] = c;
+      totalCats.listy += c.listy||0;
+      totalCats.feedback += c.feedback||0;
+      totalCats.chatz += c.chatz||0;
+      totalCats.dept += c.dept||0;
+    });
+    const value = totalCats.listy + totalCats.feedback + totalCats.chatz + totalCats.dept;
+
+    let shiftsWorked = 0;
+    days.forEach(d=>{
+      if(!TOUCHES_DATES.has(d)) return;
+      const entry = a.daily.find(x=>x.date===d);
+      if(entry){
+        const c = SHIFT_CAT(entry.shift);
+        if(c!=='off' && c!=='vac') shiftsWorked++;
+      }
+    });
+    const avg = shiftsWorked>0 ? Math.round((value/shiftsWorked)*10)/10 : null;
+
+    return {id:a.id, name:a.name, perDay, totalCats, value, shiftsCount:shiftsWorked, avg};
+  }).sort((a,b)=>b.value-a.value);
+
+  const theadRow = document.getElementById('trend-drill-thead');
+  theadRow.innerHTML = `<th>Агент</th>` +
+    dayMeta.map(d=>`<th data-date="${d.date}" class="${d.date===selectedTrendDate ? 'col-active' : ''}">${d.wd}<br>${d.dateShort}</th>`).join('') +
+    `<th class="total">Разом</th>`;
+
+  const dayValues = [];
+  rows.forEach(r=> days.forEach(d=>{
+    const c = r.perDay[d];
+    dayValues.push((c.listy||0)+(c.feedback||0)+(c.chatz||0)+(c.dept||0));
+  }));
+  const dayMin = Math.min(...dayValues), dayMax = Math.max(...dayValues);
+  const totalValues = rows.map(r=>r.value);
+  const totalMin = Math.min(...totalValues), totalMax = Math.max(...totalValues);
+
+  const tbody = document.getElementById('trend-drill-tbody');
+  tbody.innerHTML = rows.map(r=>{
+    const cells = dayMeta.map(d=>{
+      const c = r.perDay[d.date];
+      const sum = (c.listy||0)+(c.feedback||0)+(c.chatz||0)+(c.dept||0);
+      const t = dayMax>dayMin ? (sum-dayMin)/(dayMax-dayMin) : 0.5;
+      const activeCls = d.date===selectedTrendDate ? 'col-active' : '';
+      return `<td data-date="${d.date}" class="heat-cell ${activeCls}" style="background:${heatColor(t)}" data-tip="${r.name} · ${d.wd} ${d.dateShort}: ${catsTooltipText(c)}">${multiGridHTML(c)}</td>`;
+    }).join('');
+    const tTotal = totalMax>totalMin ? (r.value-totalMin)/(totalMax-totalMin) : 0.5;
+    return `<tr data-key="${r.id}"><td class="name">${r.name}</td>${cells}<td class="total heat-cell" style="background:${heatColor(tTotal)}" data-tip="${r.name} · разом за період: ${catsTooltipText(r.totalCats)}">${multiGridHTML(r.totalCats)}</td></tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      selectedId = Number(tr.dataset.key);
+      renderList(); renderDetail();
+      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+
+  tbody.querySelectorAll('.heat-cell').forEach(cell=>{
+    cell.addEventListener('mouseenter', (e)=>{
+      showChartTooltip(cell.dataset.tip, e.clientX, e.clientY);
+      e.stopPropagation();
+    });
+    cell.addEventListener('mousemove', (e)=>{ moveChartTooltip(e.clientX, e.clientY); e.stopPropagation(); });
+    cell.addEventListener('mouseleave', ()=>{ hideChartTooltip(); });
+  });
+}
+
+function pad2(n){ return String(n).padStart(2,'0'); }
+function ymd(dt){ return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth()+1)}-${pad2(dt.getUTCDate())}`; }
+function todayUTC(){
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function summaryPresetRange(kind){
+  const t = todayUTC();
+  if(kind==='last-week'){
+    const dow = t.getUTCDay();
+    const mondayOffset = (dow===0) ? -6 : -(dow-1);
+    const thisMonday = new Date(t); thisMonday.setUTCDate(t.getUTCDate()+mondayOffset);
+    const lastMonday = new Date(thisMonday); lastMonday.setUTCDate(thisMonday.getUTCDate()-7);
+    const lastSunday = new Date(thisMonday); lastSunday.setUTCDate(thisMonday.getUTCDate()-1);
+    return [ymd(lastMonday), ymd(lastSunday)];
+  }
+  if(kind==='this-month'){
+    const first = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
+    return [ymd(first), ymd(t)];
+  }
+  // last-month
+  const firstThis = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
+  const lastPrevMonth = new Date(firstThis); lastPrevMonth.setUTCDate(0);
+  const firstPrevMonth = new Date(Date.UTC(lastPrevMonth.getUTCFullYear(), lastPrevMonth.getUTCMonth(), 1));
+  return [ymd(firstPrevMonth), ymd(lastPrevMonth)];
+}
+
+function aggregateSummary(from, to){
+  const dates = datesBetween(from, to);
+  return AGENTS.map(a=>{
+    let listy=0, chatz=0, chatShifts=0, totalShifts=0;
+    dates.forEach(d=>{
+      const cats = (RANGE_DATA[d]||{})[a.id];
+      if(cats){ listy += cats.listy||0; chatz += cats.chatz||0; }
+      const cat = SHIFT_CAT(getShiftForDate(a.id, d));
+      if(cat!=='off' && cat!=='vac') totalShifts++;
+      if(cat==='chaty') chatShifts++;
+    });
+    const closed = listy + chatz;
+    const avgChat = chatShifts>0 ? Math.round((chatz/chatShifts)*10)/10 : null;
+    const avgClosed = totalShifts>0 ? Math.round((closed/totalShifts)*10)/10 : null;
+    return {id:a.id, name:a.name, listy, chatz, chatShifts, avgChat, totalShifts, closed, avgClosed};
+  });
+}
+
+let summarySortKey = 'closed';
+let summarySortDir = 'desc';
+
+function renderSummaryTable(){
+  const fromInput = document.getElementById('summary-from');
+  const toInput = document.getElementById('summary-to');
+  let from = fromInput.value || shiftDate(RANGE_MAX,-6);
+  let to = toInput.value || RANGE_MAX;
+  if(from < RANGE_MIN) from = RANGE_MIN;
+  if(to > RANGE_MAX) to = RANGE_MAX;
+  if(from > to) from = to;
+  fromInput.value = from; toInput.value = to;
+
+  const rows = aggregateSummary(from, to);
+  rows.sort((a,b)=>{
+    if(summarySortKey==='name') return a.name.localeCompare(b.name)*(summarySortDir==='asc'?1:-1);
+    const av = a[summarySortKey], bv = b[summarySortKey];
+    const an = av===null?-Infinity:av, bn = bv===null?-Infinity:bv;
+    return (bn-an)*(summarySortDir==='asc'?-1:1);
+  });
+
+  const totals = {listy:0, chatz:0, chatShifts:0, totalShifts:0, closed:0};
+  rows.forEach(r=>{ totals.listy+=r.listy; totals.chatz+=r.chatz; totals.chatShifts+=r.chatShifts; totals.totalShifts+=r.totalShifts; totals.closed+=r.closed; });
+  const totalsAvgChat = totals.chatShifts>0 ? Math.round((totals.chatz/totals.chatShifts)*10)/10 : null;
+  const totalsAvgClosed = totals.totalShifts>0 ? Math.round((totals.closed/totals.totalShifts)*10)/10 : null;
+
+  const tbody = document.getElementById('summary-tbody');
+  tbody.innerHTML = rows.map((r,i)=>`
+    <tr data-id="${r.id}">
+      <td class="rank">${i+1}</td>
+      <td class="name">${r.name}</td>
+      <td class="c-listy">${r.listy}</td>
+      <td class="c-chaty">${r.chatz}</td>
+      <td>${r.chatShifts}</td>
+      <td>${r.avgChat===null?'—':r.avgChat}</td>
+      <td>${r.totalShifts}</td>
+      <td class="c-total">${r.closed}</td>
+      <td class="c-total">${r.avgClosed===null?'—':r.avgClosed}</td>
+    </tr>`).join('');
+
+  document.getElementById('summary-tfoot').innerHTML = `
+    <tr>
+      <td></td>
+      <td>Разом</td>
+      <td class="c-listy">${totals.listy}</td>
+      <td class="c-chaty">${totals.chatz}</td>
+      <td>${totals.chatShifts}</td>
+      <td>${totalsAvgChat===null?'—':totalsAvgChat}</td>
+      <td>${totals.totalShifts}</td>
+      <td class="c-total">${totals.closed}</td>
+      <td class="c-total">${totalsAvgClosed===null?'—':totalsAvgClosed}</td>
+    </tr>`;
+
+  document.getElementById('summary-span').textContent = `${fmtDateShort(from)} – ${fmtDateShort(to)} · ${datesBetween(from,to).length} дн.`;
+
+  document.querySelectorAll('#summary-table thead th[data-key]').forEach(th=>{
+    th.classList.toggle('sorted', th.dataset.key===summarySortKey);
+    th.querySelector('.arrow')?.remove();
+    if(th.dataset.key===summarySortKey){
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = summarySortDir==='asc' ? '▲' : '▼';
+      th.appendChild(arrow);
+    }
+  });
+
+  tbody.querySelectorAll('tr').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      selectedId = Number(tr.dataset.id);
+      renderList(); renderDetail();
+      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+}
+
+function initSummary(){
+  const fromInput = document.getElementById('summary-from');
+  const toInput = document.getElementById('summary-to');
+  fromInput.min = toInput.min = RANGE_MIN;
+  fromInput.max = toInput.max = RANGE_MAX;
+  fromInput.value = shiftDate(RANGE_MAX, -6);
+  toInput.value = RANGE_MAX;
+
+  fromInput.addEventListener('change', renderSummaryTable);
+  toInput.addEventListener('change', renderSummaryTable);
+
+  document.querySelectorAll('#summary-presets .range-preset').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [from, to] = summaryPresetRange(btn.dataset.summaryPreset);
+      fromInput.value = from; toInput.value = to;
+      document.querySelectorAll('#summary-presets .range-preset').forEach(b=>b.classList.toggle('active', b===btn));
+      renderSummaryTable();
+    });
+  });
+
+  document.querySelectorAll('#summary-table thead th[data-key]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.key;
+      if(summarySortKey===key){ summarySortDir = summarySortDir==='asc'?'desc':'asc'; }
+      else { summarySortKey = key; summarySortDir = key==='name' ? 'asc' : 'desc'; }
+      renderSummaryTable();
+    });
+  });
+
+  renderSummaryTable();
+}
+
+function initTrend(){
+  const fromInput = document.getElementById('trend-from');
+  const toInput = document.getElementById('trend-to');
+  fromInput.min = toInput.min = RANGE_MIN;
+  fromInput.max = toInput.max = RANGE_MAX;
+  fromInput.value = shiftDate(RANGE_MAX, -6);
+  toInput.value = RANGE_MAX;
+
+  fromInput.addEventListener('change', renderTrendDrill);
+  toInput.addEventListener('change', renderTrendDrill);
+
+  document.querySelectorAll('.trend-nav[data-trend-preset]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const n = Number(btn.dataset.trendPreset);
+      let from = shiftDate(RANGE_MAX, -(n-1));
+      if(from < RANGE_MIN) from = RANGE_MIN;
+      fromInput.value = from; toInput.value = RANGE_MAX;
+      renderTrendDrill();
+    });
+  });
+
+  renderTrendDrill();
+}
+
+renderList();
+renderDetail();
+initRings();
+initTrend();
+initSummary();
+</script>
+</body>
+</html>
