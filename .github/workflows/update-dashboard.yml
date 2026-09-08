@@ -1,0 +1,46 @@
+name: Оновити Пульс команди
+
+on:
+  workflow_dispatch:   # кнопка "Run workflow" для ручного запуску
+  schedule:
+    # 08:00 / 16:00 / 00:00 за Києвом. GitHub Actions cron працює лише в UTC,
+    # а Київ двічі на рік переходить на літній/зимовий час — тому тут два
+    # набори, розділені по місяцях. Під час самого переходу (кінець
+    # березня/жовтня) розклад може на ~1 годину "поїхати" на тиждень —
+    # не критично для дашборду.
+    - cron: '0 5 * 3-10 *'      # літо (EEST, UTC+3): 08:00 Київ
+    - cron: '0 13 * 3-10 *'     # літо: 16:00 Київ
+    - cron: '0 21 * 3-10 *'     # літо: 00:00 Київ
+    - cron: '0 6 * 1,2,11,12 *' # зима (EET, UTC+2): 08:00 Київ
+    - cron: '0 14 * 1,2,11,12 *' # зима: 16:00 Київ
+    - cron: '0 22 * 1,2,11,12 *' # зима: 00:00 Київ
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install -r requirements.txt
+
+      - name: Перегенерувати дашборд
+        run: python regenerate.py
+        env:
+          ZAMMAD_TOKEN: ${{ secrets.ZAMMAD_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SIMULATOR_TOKEN: ${{ secrets.SIMULATOR_TOKEN }}
+
+      - name: Закомітити оновлення
+        run: |
+          git config user.name "pulse-bot"
+          git config user.email "actions@github.com"
+          git add index.html cache/
+          git diff --staged --quiet || git commit -m "Автооновлення Пульс команди $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
