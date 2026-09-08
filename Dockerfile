@@ -11,4 +11,6 @@ RUN mkdir -p /app/www /app/cache
 
 EXPOSE 8080
 
-CMD ["python", "app.py"]
+# без -u вивід print() буферизується і не потрапляє в docker/kubectl logs,
+# поки буфер не заповниться (а він може й не заповнитись за годинами)
+CMD ["python", "-u", "app.py"]
