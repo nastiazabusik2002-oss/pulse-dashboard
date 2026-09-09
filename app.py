@@ -10,6 +10,18 @@
 підрахунку нових тікетів (той системно недораховував роботу над уже
 наявними тікетами, типу фідбеків).
 
+Рахуємо одним проходом на всю команду за день (analyze_team_day), а не
+по кожному агенту окремо — бо власник тікета в Zammad міняється протягом
+дня, і "чий тікет" != "хто реально написав". Кожен артикль зараховуємо
+тому, хто його написав (article.created_by), звірено з офіційною
+Zammad-статистикою вручну. Дзвінки (type=="phone", лог розмови без
+тексту) в підрахунок не йдуть, як і внутрішні нотатки.
+
+/tickets/search мовчки обрізає результат на 200 записах незалежно від
+limit — без пагінації (page=) частина тікетів губилась без помилки,
+особливо в командному запиті за день. Тепер search_tickets гортає
+сторінки сама.
+
 Вікно днів прив'язане до PRECISE_ANCHOR_DATE і росте по одному дню за
 раз, поки не впреться в стелю WINDOW_DAYS_MAX — це не дає першому
 прогону роздутись на години.
@@ -24,6 +36,7 @@ import re
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
@@ -72,7 +85,10 @@ OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/www")
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "pulse.html")
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
-PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise.json")
+PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v2.json")
+# v2 — стара precise.json порахована іншою (менш точною) логікою; нова
+# назва файлу примушує пересчитати всі дні заново новим кодом, а не
+# мовчки лишити старі помилкові числа в кеші назавжди.
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 
 # Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
@@ -136,8 +152,14 @@ SIMULATOR_ACTORS = {
 # Zammad — HTTP-клієнт з ретраями
 # ---------------------------------------------------------------------------
 
+FETCH_WORKERS = 10  # паралельні запити тегів/артиклів по тікетах — послідовно
+                     # на командний день (сотні тікетів) це займало б години
+
 _session = requests.Session()
 _session.headers.update({"Authorization": f"Token token={ZAMMAD_TOKEN}"})
+_adapter = requests.adapters.HTTPAdapter(pool_maxsize=FETCH_WORKERS + 2)
+_session.mount("https://", _adapter)
+_session.mount("http://", _adapter)
 
 
 def zammad_get(path, params=None, retries=4):
@@ -152,8 +174,20 @@ def zammad_get(path, params=None, retries=4):
             time.sleep(1.5 * (attempt + 1))
 
 
-def search_tickets(query, limit=200):
-    return zammad_get("/tickets/search", {"query": query, "limit": limit})
+def search_tickets(query, page_size=200):
+    # /tickets/search мовчки обрізає результат на 200 записах незалежно
+    # від limit (перевірено наживо) — без пагінації по page= для будь-якого
+    # запиту, що знаходить понад 200 тікетів (типово командний запит за
+    # день), частина тікетів просто губилась без жодної помилки.
+    out = []
+    page = 1
+    while True:
+        batch = zammad_get("/tickets/search", {"query": query, "limit": page_size, "page": page})
+        out.extend(batch)
+        if len(batch) < page_size:
+            break
+        page += 1
+    return out
 
 
 def find_zammad_user(email):
@@ -162,63 +196,100 @@ def find_zammad_user(email):
 
 
 # ---------------------------------------------------------------------------
-# Точний (по-артикловий) аналіз одного агента за один день — те саме, чим
-# рахували "yday_*" і 7-денний daily[] у pulse.html.
-# ---------------------------------------------------------------------------
-
-def analyze_agent_day(user_id, login, date_str):
+# Точний (по-артикловий) аналіз ВСІЄЇ команди за один день, одним проходом.
+#
+# Раніше рахували на кожного агента окремо (тікети, де він owner/creator),
+# але власник тікета в Zammad міняється протягом дня (тікет перекидають між
+# агентами, повертають у чергу) — тож частина реальних відповідей губилась
+# або приписувалась не тому агенту. Офіційна Zammad-статистика (з якою
+# звіряли вручну) рахує "хто фактично написав" по історії тікета, а не по
+# поточному власнику. Тому тепер: спершу одним широким запитом (по всій
+# команді разом) знаходимо ВСІ тікети, яких хтось із команди торкався за
+# день, а потім кожен артикль зараховуємо тому, хто його РЕАЛЬНО написав
+# (article.created_by), незалежно від того, хто зараз власник тікета.
+#
+# Дзвінки (type == "phone" — системний лог розмови, не написаний текст)
+# так само не рахуємо як артикль, як і внутрішні нотатки (type == "note") —
+# перевірено на реальних агентах з великою часткою дзвінків: без цього
+# виключення їх денна сума була в 3-4 рази більша за офіційну статистику.
+def analyze_team_day(zammad_users, date_str):
     y, m, d = (int(x) for x in date_str.split("-"))
     d0 = date(y, m, d)
     d1 = d0 + timedelta(days=1)
     rng = f"[{d0.isoformat()}T00:00:00Z TO {d1.isoformat()}T00:00:00Z]"
 
-    q_created = f"(created_by_id:{user_id} OR owner_id:{user_id}) AND created_at:{rng}"
-    q_touched = f"owner_id:{user_id} AND last_contact_agent_at:{rng}"
+    ids = [str(zu["id"]) for zu in zammad_users.values()]
+    id_or = " OR ".join(ids)
+    q_created = f"(created_by_id:({id_or}) OR owner_id:({id_or})) AND created_at:{rng}"
+    q_touched = f"owner_id:({id_or}) AND last_contact_agent_at:{rng}"
 
     tickets = {}
     for q in (q_created, q_touched):
         for t in search_tickets(q):
             tickets[t["id"]] = t
 
-    ticket_cat = {}
-    for tid, t in tickets.items():
-        tags = zammad_get("/tags", {"object": "Ticket", "o_id": tid}).get("tags", [])
-        title = t.get("title") or ""
-        gid = t.get("group_id")
-        if "feedback_all" in tags:
-            ticket_cat[tid] = "feedback"
-        elif title.startswith("Chat –") or title.startswith("Chat -"):
-            ticket_cat[tid] = "chat"
-        elif gid in DEPT_GROUPS:
-            ticket_cat[tid] = "dept"
-        else:
-            ticket_cat[tid] = "listy"
+    def _tags_for(tid):
+        return tid, zammad_get("/tags", {"object": "Ticket", "o_id": tid}).get("tags", [])
 
-    cat_articles = {"listy": 0, "feedback": 0, "chat": 0, "dept": 0}
-    notes = 0
-    touches_total = 0
-    for tid in tickets:
-        arts = zammad_get(f"/ticket_articles/by_ticket/{tid}")
+    ticket_cat = {}
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        for tid, tags in pool.map(_tags_for, tickets.keys()):
+            t = tickets[tid]
+            title = t.get("title") or ""
+            gid = t.get("group_id")
+            if "feedback_all" in tags:
+                ticket_cat[tid] = "feedback"
+            elif title.startswith("Chat –") or title.startswith("Chat -"):
+                ticket_cat[tid] = "chat"
+            elif gid in DEPT_GROUPS:
+                ticket_cat[tid] = "dept"
+            else:
+                ticket_cat[tid] = "listy"
+
+    login_to_email = {zu["login"]: email for email, zu in zammad_users.items()}
+    per_agent = {
+        email: {"listy": 0, "feedback": 0, "chat": 0, "dept": 0, "notes": 0, "touches": 0, "tickets": set()}
+        for email in zammad_users
+    }
+
+    def _articles_for(tid):
+        return tid, zammad_get(f"/ticket_articles/by_ticket/{tid}")
+
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        articles_by_ticket = list(pool.map(_articles_for, tickets.keys()))
+
+    for tid, arts in articles_by_ticket:
         for a in arts:
-            if a.get("sender") != "Agent" or a.get("created_by") != login:
+            if a.get("sender") != "Agent":
                 continue
+            email = login_to_email.get(a.get("created_by"))
+            if not email:
+                continue  # артикль не від когось із нашої команди (тімлід/бот/інтеграція)
             ca = a.get("created_at", "")
             if not (f"{d0.isoformat()}T00:00:00" <= ca < f"{d1.isoformat()}T00:00:00"):
                 continue
-            touches_total += 1
-            if a.get("type") == "note":
-                notes += 1
+            r = per_agent[email]
+            r["touches"] += 1
+            r["tickets"].add(tid)
+            atype = a.get("type")
+            if atype == "note":
+                r["notes"] += 1
+            elif atype == "phone":
+                continue
             else:
-                cat_articles[ticket_cat[tid]] += 1
+                r[ticket_cat[tid]] += 1
 
     return {
-        "listy": cat_articles["listy"],
-        "feedback": cat_articles["feedback"],
-        "chatz": cat_articles["chat"],
-        "dept": cat_articles["dept"],
-        "notes": notes,
-        "touches": touches_total,
-        "tickets": len(tickets),
+        email: {
+            "listy": r["listy"],
+            "feedback": r["feedback"],
+            "chatz": r["chat"],
+            "dept": r["dept"],
+            "notes": r["notes"],
+            "touches": r["touches"],
+            "tickets": len(r["tickets"]),
+        }
+        for email, r in per_agent.items()
     }
 
 
@@ -424,17 +495,12 @@ def regenerate():
         if d in precise_cache:
             continue
         print(f"[refresh] тягну точні дані за {d}")
-        day_result = {}
-        for member in TEAM:
-            zu = zammad_users.get(member["email"])
-            if not zu:
-                continue
-            try:
-                day_result[member["email"]] = analyze_agent_day(zu["id"], zu["login"], d)
-            except Exception:
-                print(f"[refresh] помилка analyze_agent_day {member['email']} {d}:")
-                traceback.print_exc()
-        precise_cache[d] = day_result
+        try:
+            precise_cache[d] = analyze_team_day(zammad_users, d)
+        except Exception:
+            print(f"[refresh] помилка analyze_team_day {d}:")
+            traceback.print_exc()
+            continue
         _save_json(PRECISE_CACHE_PATH, precise_cache)
 
     _prune_cache(precise_cache, yesterday - timedelta(days=CACHE_KEEP_DAYS))
