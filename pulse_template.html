@@ -794,7 +794,7 @@ function aggregateSummary(from, to){
       if(cats){ listy += (cats.listy||0) + (cats.feedback||0); chatz += cats.chatz||0; }
       const cat = SHIFT_CAT(getShiftForDate(a.id, d));
       if(cat!=='off' && cat!=='vac') totalShifts++;
-      if(cat==='chaty') chatShifts++;
+      if(cat==='chaty' || cat==='nichna') chatShifts++;
     });
     const closed = listy + chatz;
     const avgChat = chatShifts>0 ? Math.round((chatz/chatShifts)*10)/10 : null;
