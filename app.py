@@ -5,9 +5,17 @@
 (і, якщо налаштовано, зміни з Supabase), перегенеровує pulse.html
 з шаблону і віддає його по HTTP на порту PORT (типово 8080).
 
+Усі дані (включно з "Хто зробив"/"Зведення за період") тепер точні,
+по-артиклові — рахуються з реальних артиклів у Zammad, а не з дешевого
+підрахунку нових тікетів (той системно недораховував роботу над уже
+наявними тікетами, типу фідбеків).
+
+Вікно днів прив'язане до PRECISE_ANCHOR_DATE і росте по одному дню за
+раз, поки не впреться в стелю WINDOW_DAYS_MAX — це не дає першому
+прогону роздутись на години.
+
 Кеш проміжних результатів лежить у /app/cache — тому кожне наступне
-оновлення рахує наново тільки НОВІ дні, а не весь 7/14-денний вікно
-заново. Це і швидше, і менше навантажує Zammad.
+оновлення рахує наново тільки НОВІ дні, а не все вікно заново.
 """
 
 import json
@@ -65,15 +73,22 @@ OUTPUT_PATH = os.path.join(OUTPUT_DIR, "pulse.html")
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
 PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise.json")
-RANGE_CACHE_PATH = os.path.join(CACHE_DIR, "range.json")
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 
-PRECISE_WINDOW_DAYS = 7   # скільки днів тримаємо точну (по-артиклову) статистику
-RANGE_WINDOW_DAYS = 40    # скільки днів тримаємо категоризацію тікетів + розклад
-                          # (40, а не місяць, — щоб "Минулий місяць" 1-го числа
-                          # завжди мав повні дані за весь попередній місяць)
-CACHE_KEEP_DAYS = 45      # старіші дні з кешу прибираємо; має бути > RANGE_WINDOW_DAYS,
-                          # інакше кеш прибиратиме дні, які range_days ще потребує
+# Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
+# період" — раніше ці таблиці рахували дешевим способом (лише НОВІ тікети
+# за день), що системно недораховувало роботу над старими тікетами (типу
+# фідбеків) — на реальних даних розбіжність з офіційною статистикою Zammad
+# була майже втричі. Тому все тепер по-артиклове, на одному й тому самому
+# вікні.
+#
+# Вікно не тягнеться на повні WINDOW_DAYS_MAX від старту — прив'язане до
+# ANCHOR_DATE (тиждень до старту реального використання) і "дозріває" само,
+# по одному новому дню за раз, поки не впреться в стелю WINDOW_DAYS_MAX.
+# Це не дає першому прогону роздутись на години.
+WINDOW_DAYS_MAX = 40       # стеля — щоб "Минулий місяць" завжди мав повні дані
+PRECISE_ANCHOR_DATE = date(2026, 8, 25)
+CACHE_KEEP_DAYS = 45       # старіші дні з кешу прибираємо; має бути > WINDOW_DAYS_MAX
 
 DEPT_GROUPS = {225: "Refund", 226: "Ticketing", 227: "Invol"}
 
@@ -205,36 +220,6 @@ def analyze_agent_day(user_id, login, date_str):
         "touches": touches_total,
         "tickets": len(tickets),
     }
-
-
-# ---------------------------------------------------------------------------
-# Дешевий (тікет-рівневий) аналіз одного агента за день — для RANGE_DATA.
-# Рахує лише НОВІ тікети за день, без відкриття кожного тікета — набагато
-# дешевше за analyze_agent_day, тому це можна робити за 14 днів без шкоди
-# для Zammad.
-# ---------------------------------------------------------------------------
-
-def range_agent_day(user_id, date_str):
-    y, m, d = (int(x) for x in date_str.split("-"))
-    d0 = date(y, m, d)
-    d1 = d0 + timedelta(days=1)
-    rng = f"[{d0.isoformat()}T00:00:00Z TO {d1.isoformat()}T00:00:00Z]"
-    q = f"(created_by_id:{user_id} OR owner_id:{user_id}) AND created_at:{rng}"
-
-    cats = {"listy": 0, "feedback": 0, "chatz": 0, "dept": 0}
-    for t in search_tickets(q, limit=200):
-        tags = zammad_get("/tags", {"object": "Ticket", "o_id": t["id"]}).get("tags", [])
-        title = t.get("title") or ""
-        gid = t.get("group_id")
-        if "feedback_all" in tags:
-            cats["feedback"] += 1
-        elif title.startswith("Chat –") or title.startswith("Chat -"):
-            cats["chatz"] += 1
-        elif gid in DEPT_GROUPS:
-            cats["dept"] += 1
-        else:
-            cats["listy"] += 1
-    return cats
 
 
 # ---------------------------------------------------------------------------
@@ -414,10 +399,12 @@ def regenerate():
     yesterday = datetime.now(TZ).date() - timedelta(days=1)
 
     precise_cache = _load_json(PRECISE_CACHE_PATH, {})
-    range_cache = _load_json(RANGE_CACHE_PATH, {})
 
-    precise_days = _date_range(yesterday, PRECISE_WINDOW_DAYS)
-    range_days = _date_range(yesterday, RANGE_WINDOW_DAYS)
+    days_since_anchor = (yesterday - PRECISE_ANCHOR_DATE).days + 1
+    window_len = max(1, min(WINDOW_DAYS_MAX, days_since_anchor))
+    precise_days = _date_range(yesterday, window_len)
+    recent_days = precise_days[-7:]  # останні 7 днів з того самого вікна —
+                                      # для AGENTS.daily / "week"-картки агента
 
     # довідник zammad user_id/login по email — тягнемо раз на запуск
     zammad_users = {}
@@ -450,51 +437,31 @@ def regenerate():
         precise_cache[d] = day_result
         _save_json(PRECISE_CACHE_PATH, precise_cache)
 
-    # --- дешеві дані (для RANGE_DATA) ---
-    for d in range_days:
-        if d in range_cache:
-            continue
-        print(f"[refresh] тягну RANGE-дані за {d}")
-        day_result = {}
-        for member in TEAM:
-            zu = zammad_users.get(member["email"])
-            if not zu:
-                continue
-            try:
-                day_result[str(member["id"])] = range_agent_day(zu["id"], d)
-            except Exception:
-                print(f"[refresh] помилка range_agent_day {member['email']} {d}:")
-                traceback.print_exc()
-        range_cache[d] = day_result
-        _save_json(RANGE_CACHE_PATH, range_cache)
-
     _prune_cache(precise_cache, yesterday - timedelta(days=CACHE_KEEP_DAYS))
-    _prune_cache(range_cache, yesterday - timedelta(days=CACHE_KEEP_DAYS))
     _save_json(PRECISE_CACHE_PATH, precise_cache)
-    _save_json(RANGE_CACHE_PATH, range_cache)
 
     # --- зміни (один запит на весь розклад команди, далі рахуємо по днях у Python) ---
     team_schedule = fetch_team_schedule()
     if team_schedule:
         shifts_by_day = {
             d: {m["email"].lower(): shift_str_for(team_schedule, m["id"], d) for m in TEAM}
-            for d in precise_days
+            for d in recent_days
         }
-        # той самий розклад, але на весь range_days (40 днів) і ключем schedule_id
-        # (як у RANGE_DATA) — для "Зведення за період", щоб пресети типу
-        # "Минулий місяць" рахували К-сть змін вірно, а не тільки за тиждень.
+        # той самий розклад, але на все precise_days (анкероване вікно) і
+        # ключем schedule_id (як у RANGE_DATA) — для "Зведення за період",
+        # щоб пресети типу "Минулий місяць" рахували К-сть змін вірно.
         shifts_range = {
             d: {str(m["id"]): shift_str_for(team_schedule, m["id"], d) for m in TEAM}
-            for d in range_days
+            for d in precise_days
         }
     else:
-        shifts_by_day = {d: {} for d in precise_days}
-        shifts_range = {d: {} for d in range_days}
+        shifts_by_day = {d: {} for d in recent_days}
+        shifts_range = {d: {} for d in precise_days}
 
     # --- реальні чати з Simulator (перекриють Zammad-евристику в RANGE_DATA) ---
     chats_cache = _load_json(CHATS_CACHE_PATH, {})
     if SIMULATOR_TOKEN:
-        for d in range_days:
+        for d in precise_days:
             if d in chats_cache:
                 continue
             print(f"[refresh] тягну чати з Simulator за {d}")
@@ -508,7 +475,7 @@ def regenerate():
         _prune_cache(chats_cache, yesterday - timedelta(days=CACHE_KEEP_DAYS))
         _save_json(CHATS_CACHE_PATH, chats_cache)
 
-    build_html(precise_cache, range_cache, shifts_by_day, chats_cache, shifts_range, precise_days, range_days, yesterday)
+    build_html(precise_cache, shifts_by_day, chats_cache, shifts_range, recent_days, precise_days, yesterday)
     print(f"[refresh] готово {datetime.now(TZ).isoformat()}")
 
 
@@ -521,11 +488,11 @@ def replace_const(name, value_json, text):
     return new_text
 
 
-def build_html(precise_cache, range_cache, shifts_by_day, chats_cache, shifts_range, precise_days, range_days, yesterday):
+def build_html(precise_cache, shifts_by_day, chats_cache, shifts_range, recent_days, precise_days, yesterday):
     agents = []
     for member in TEAM:
         daily = []
-        for d in precise_days:
+        for d in recent_days:
             r = precise_cache.get(d, {}).get(member["email"], {})
             shift = shifts_by_day.get(d, {}).get(member["email"].lower(), "OFF")
             daily.append({
@@ -535,11 +502,11 @@ def build_html(precise_cache, range_cache, shifts_by_day, chats_cache, shifts_ra
                 "shift": shift,
             })
 
-        y = precise_cache.get(precise_days[-1], {}).get(member["email"], {})
+        y = precise_cache.get(recent_days[-1], {}).get(member["email"], {})
         week_touches = sum(x["touches"] for x in daily)
         week_tickets = sum(x["tickets"] for x in daily)
         active_days = sum(1 for x in daily if x["touches"] > 0)
-        yshift = shifts_by_day.get(precise_days[-1], {}).get(member["email"].lower(), "OFF")
+        yshift = shifts_by_day.get(recent_days[-1], {}).get(member["email"].lower(), "OFF")
 
         agents.append({
             "id": member["id"],
@@ -559,22 +526,30 @@ def build_html(precise_cache, range_cache, shifts_by_day, chats_cache, shifts_ra
             "daily": daily,
         })
 
-    # {date: {schedule_id: {...}}}; де є реальні чати з Simulator за цей день —
-    # підміняємо ними "chatz" (Zammad-евристика за назвою тікета майже нічого
-    # не ловить). Копіюємо, а не мутуємо range_cache — щоб на диску лишалось
-    # чисте Zammad-значення як резерв, якщо Simulator-токен колись протухне.
+    # {date: {schedule_id: {...}}} — тепер напряму з точних (по-артиклових)
+    # даних (precise_cache), а не з дешевого тікет-рівневого підрахунку,
+    # який системно недораховував роботу над уже наявними тікетами (типу
+    # фідбеків). Де є реальні чати з Simulator за цей день — підміняємо
+    # ними "chatz".
     range_data = {}
-    for d in range_days:
+    for d in precise_days:
         day_chats = chats_cache.get(d, {})
         merged = {}
-        for sid, cats in range_cache.get(d, {}).items():
-            cats = dict(cats)
+        for member in TEAM:
+            r = precise_cache.get(d, {}).get(member["email"], {})
+            cats = {
+                "listy": r.get("listy", 0),
+                "feedback": r.get("feedback", 0),
+                "chatz": r.get("chatz", 0),
+                "dept": r.get("dept", 0),
+            }
+            sid = str(member["id"])
             if sid in day_chats:
                 cats["chatz"] = day_chats[sid]
             merged[sid] = cats
         range_data[d] = merged
 
-    range_min, range_max = range_days[0], range_days[-1]
+    range_min, range_max = precise_days[0], precise_days[-1]
 
     html = open(TEMPLATE_PATH, "r", encoding="utf-8").read()
 
