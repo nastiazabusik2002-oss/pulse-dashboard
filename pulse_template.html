@@ -373,7 +373,7 @@
           <tfoot id="summary-tfoot"></tfoot>
         </table>
       </div>
-      <p class="range-note" id="summary-note">Листи/Чати — фактичні артиклі за обраний період (Чати — реальні дані з Simulator). Закрито загалом = Листи + Чати.</p>
+      <p class="range-note" id="summary-note">Листи — фактичні артиклі за обраний період, звичайні листи + фідбек разом. Чати — реальні дані з Simulator. Закрито загалом = Листи + Чати.</p>
     </div>
   </section>
 
@@ -791,7 +791,7 @@ function aggregateSummary(from, to){
     let listy=0, chatz=0, chatShifts=0, totalShifts=0;
     dates.forEach(d=>{
       const cats = (RANGE_DATA[d]||{})[a.id];
-      if(cats){ listy += cats.listy||0; chatz += cats.chatz||0; }
+      if(cats){ listy += (cats.listy||0) + (cats.feedback||0); chatz += cats.chatz||0; }
       const cat = SHIFT_CAT(getShiftForDate(a.id, d));
       if(cat!=='off' && cat!=='vac') totalShifts++;
       if(cat==='chaty') chatShifts++;
