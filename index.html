@@ -249,12 +249,12 @@
     <h1>Пульс команди</h1>
     <p class="lede">Обери агента — побачиш зміну вчора і детальний розріз того, що він зробив у Zammad: листи, фідбеки, чати із сайту, передачі в інші відділи, замітки. Плюс сім днів динаміки з прив'язкою до графіка.</p>
     <div class="kpi-row">
-      <div class="kpi"><div class="v">477</div><div class="l">артиклів команди — учора, 02.09</div></div>
-      <div class="kpi"><div class="v">263</div><div class="l">фідбеків команди — учора</div></div>
-      <div class="kpi"><div class="v">57</div><div class="l">передач в інші відділи — учора</div></div>
-      <div class="kpi"><div class="v">35%</div><div class="l">частка команди в загальному потоці компанії (1 344)</div></div>
-      <div class="kpi"><div class="v">12 / 15</div><div class="l">агентів мали активність учора</div></div>
-      <div class="kpi"><div class="v">2 951</div><div class="l">артиклів команди за тиждень 27.08–02.09</div></div>
+      <div class="kpi"><div class="v" id="kpi-touches">—</div><div class="l" id="kpi-touches-label">артиклів команди — учора</div></div>
+      <div class="kpi"><div class="v" id="kpi-feedback">—</div><div class="l">фідбеків команди — учора</div></div>
+      <div class="kpi"><div class="v" id="kpi-dept">—</div><div class="l">передач в інші відділи — учора</div></div>
+      <div class="kpi"><div class="v">—</div><div class="l">частка команди в загальному потоці компанії (дані компанії поки не підключені)</div></div>
+      <div class="kpi"><div class="v" id="kpi-active">—</div><div class="l">агентів мали активність учора</div></div>
+      <div class="kpi"><div class="v" id="kpi-week">—</div><div class="l" id="kpi-week-label">артиклів команди за тиждень</div></div>
     </div>
   </header>
 
@@ -330,7 +330,7 @@
         <span><span class="lg-dot" style="background:var(--sh-chaty)"></span>Чати</span>
         <span><span class="lg-dot" style="background:var(--sh-senior)"></span>Інший відділ</span>
       </div>
-      <p class="rings-note">Тут рахуються нові тікети по кожній категорії за день (як і в таблиці «Порівняння по категоріях» вище), а не фактичні артиклі — тому загальна висота стовпчика може трохи відрізнятись від числа в картці агента нижче. Дані точні лише за 27.08–02.09.</p>
+      <p class="rings-note" id="rings-note">Тут рахуються фактичні артиклі по кожній категорії за день (те саме джерело, що й у картці агента нижче).</p>
     </div>
   </section>
 
@@ -373,7 +373,7 @@
           <tfoot id="summary-tfoot"></tfoot>
         </table>
       </div>
-      <p class="range-note" id="summary-note">Листи/Чати — нові тікети за обраний період (те саме джерело, що в таблиці «Порівняння по категоріях» вище; Чати — реальні дані з Simulator, де вже підключено). Закрито загалом = Листи + Чати. Графік змін по днях 20–26.08 — умовний приклад для демонстрації, поки не підключений реальний розклад із Supabase; з 27.08 і далі графік реальний.</p>
+      <p class="range-note" id="summary-note">Листи/Чати — фактичні артиклі за обраний період (Чати — реальні дані з Simulator). Закрито загалом = Листи + Чати.</p>
     </div>
   </section>
 
@@ -388,7 +388,7 @@
 
   <footer>
     Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
-    Оновлено: 2026-09-09, 02:38 (Europe/Kiev)
+    Оновлено: 2026-09-09, 12:47 (Europe/Kiev)
   </footer>
 </div>
 
@@ -466,7 +466,7 @@ function renderDetail(){
     <div class="demail">${a.email}</div>
     <div class="shift-card" style="background:var(--sh-${sd.cat}-soft);color:var(--sh-${sd.cat})">
       <div>
-        <div class="sc-label">Зміна учора, 02.09</div>
+        <div class="sc-label">Зміна учора, ${fmtDateShort(a.daily[a.daily.length-1].date)}</div>
         <div class="sc-main">${sd.main}</div>
       </div>
     </div>
@@ -934,6 +934,25 @@ function initTrend(){
   renderTrendDrill();
 }
 
+function renderHeader(){
+  const yday = AGENTS[0].daily[AGENTS[0].daily.length-1].date;
+  const weekFrom = AGENTS[0].daily[0].date;
+  const touches = AGENTS.reduce((s,a)=>s+a.yday_touches_raw, 0);
+  const feedback = AGENTS.reduce((s,a)=>s+a.yday_feedback, 0);
+  const dept = AGENTS.reduce((s,a)=>s+a.yday_dept, 0);
+  const active = AGENTS.filter(a=>a.yday_touches_raw>0).length;
+  const week = AGENTS.reduce((s,a)=>s+a.week_touches, 0);
+
+  document.getElementById('kpi-touches').textContent = touches.toLocaleString('uk-UA');
+  document.getElementById('kpi-touches-label').textContent = `артиклів команди — учора, ${fmtDateShort(yday)}`;
+  document.getElementById('kpi-feedback').textContent = feedback.toLocaleString('uk-UA');
+  document.getElementById('kpi-dept').textContent = dept.toLocaleString('uk-UA');
+  document.getElementById('kpi-active').textContent = `${active} / ${AGENTS.length}`;
+  document.getElementById('kpi-week').textContent = week.toLocaleString('uk-UA');
+  document.getElementById('kpi-week-label').textContent = `артиклів команди за тиждень ${fmtDateShort(weekFrom)}–${fmtDateShort(yday)}`;
+}
+
+renderHeader();
 renderList();
 renderDetail();
 initRings();
