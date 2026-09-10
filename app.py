@@ -85,11 +85,15 @@ OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/www")
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "pulse.html")
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
-PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v3.json")
+PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v4.json")
 # v2 -> v3: у v2 "Інший відділ" завжди виходив 0 — нотатки-передачі
 # (agent пише причину й переносить тікет у Refund/Ticketing/Invol) йшли
 # виключно як type=="note", а такі повністю виключались з підрахунку.
-# Нова назва файлу знову примушує пересчитати все заново новим кодом.
+# v3 -> v4: межі доби рахувались так, ніби Zammad-час уже київський —
+# насправді created_at в UTC, а Київ восени +3 (EEST). Перші ~3 години
+# нічної зміни (00:00-03:00 за Києвом) через це йшли в підрахунок
+# ПОПЕРЕДНЬОГО дня — найпомітніше саме для нічних змін.
+# Кожна нова назва файлу знову примушує пересчитати все заново.
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 
 # Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
@@ -223,10 +227,19 @@ def find_zammad_user(email):
 # перший бекфіл вікна після цього фіксу займе години, а не хвилини, зате
 # рахує без цієї діри.
 def analyze_team_day(zammad_users, date_str):
+    # Межі доби рахуємо в київському часі й конвертуємо в UTC — Zammad
+    # зберігає created_at в UTC, а Київ восени +3 (EEST). Раніше межі дня
+    # рахувались так, ніби d0/d1 вже UTC (тобто зі зсувом на ці 2-3
+    # години) — для денних змін це майже непомітно, але для нічної зміни
+    # (яка якраз триває через північ за Києвом) перші ~3 години нічної
+    # роботи (00:00–03:00 за Києвом) помилково йшли в підрахунок
+    # ПОПЕРЕДНЬОГО дня.
     y, m, d = (int(x) for x in date_str.split("-"))
-    d0 = date(y, m, d)
-    d1 = d0 + timedelta(days=1)
-    rng = f"[{d0.isoformat()}T00:00:00Z TO {d1.isoformat()}T00:00:00Z]"
+    d0_local = datetime(y, m, d, tzinfo=TZ)
+    d1_local = d0_local + timedelta(days=1)
+    d0_str = d0_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
+    d1_str = d1_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
+    rng = f"[{d0_str}Z TO {d1_str}Z]"
 
     q_created = f"created_at:{rng}"
     q_touched = f"last_contact_agent_at:{rng}"
@@ -274,7 +287,7 @@ def analyze_team_day(zammad_users, date_str):
             if not email:
                 continue  # артикль не від когось із нашої команди (тімлід/бот/інтеграція)
             ca = a.get("created_at", "")
-            if not (f"{d0.isoformat()}T00:00:00" <= ca < f"{d1.isoformat()}T00:00:00"):
+            if not (d0_str <= ca < d1_str):
                 continue
             r = per_agent[email]
             r["touches"] += 1
