@@ -85,10 +85,11 @@ OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/www")
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "pulse.html")
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
-PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v2.json")
-# v2 — стара precise.json порахована іншою (менш точною) логікою; нова
-# назва файлу примушує пересчитати всі дні заново новим кодом, а не
-# мовчки лишити старі помилкові числа в кеші назавжди.
+PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v3.json")
+# v2 -> v3: у v2 "Інший відділ" завжди виходив 0 — нотатки-передачі
+# (agent пише причину й переносить тікет у Refund/Ticketing/Invol) йшли
+# виключно як type=="note", а такі повністю виключались з підрахунку.
+# Нова назва файлу знову примушує пересчитати все заново новим кодом.
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 
 # Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
@@ -212,16 +213,23 @@ def find_zammad_user(email):
 # так само не рахуємо як артикль, як і внутрішні нотатки (type == "note") —
 # перевірено на реальних агентах з великою часткою дзвінків: без цього
 # виключення їх денна сума була в 3-4 рази більша за офіційну статистику.
+#
+# Пошук тікетів НЕ обмежений owner_id:(наші 15) — перевірено наживо: якщо
+# тікет ескалюють/передають комусь поза командою (навіть тимчасово), він
+# зникає з такого пошуку разом з усіма артиклями наших агентів на ньому.
+# Тому дискавері тепер по всій компанії за день, а фільтр "чи це наш
+# агент" застосовується вже на рівні автора артикля нижче. Це набагато
+# дорожче (тисячі тікетів на день замість сотень) — свідомий компроміс:
+# перший бекфіл вікна після цього фіксу займе години, а не хвилини, зате
+# рахує без цієї діри.
 def analyze_team_day(zammad_users, date_str):
     y, m, d = (int(x) for x in date_str.split("-"))
     d0 = date(y, m, d)
     d1 = d0 + timedelta(days=1)
     rng = f"[{d0.isoformat()}T00:00:00Z TO {d1.isoformat()}T00:00:00Z]"
 
-    ids = [str(zu["id"]) for zu in zammad_users.values()]
-    id_or = " OR ".join(ids)
-    q_created = f"(created_by_id:({id_or}) OR owner_id:({id_or})) AND created_at:{rng}"
-    q_touched = f"owner_id:({id_or}) AND last_contact_agent_at:{rng}"
+    q_created = f"created_at:{rng}"
+    q_touched = f"last_contact_agent_at:{rng}"
 
     tickets = {}
     for q in (q_created, q_touched):
@@ -272,12 +280,19 @@ def analyze_team_day(zammad_users, date_str):
             r["touches"] += 1
             r["tickets"].add(tid)
             atype = a.get("type")
+            if atype == "phone":
+                continue
             if atype == "note":
                 r["notes"] += 1
-            elif atype == "phone":
+                # передача в інший відділ оформлюється саме внутрішньою
+                # нотаткою (агент пише причину і переносить тікет у
+                # Refund/Ticketing/Invol) — це реальна "передача", не
+                # службова робоча нотатка, тому саме тут notes рахуємо
+                # ще й як dept, а не пропускаємо.
+                if ticket_cat[tid] == "dept":
+                    r["dept"] += 1
                 continue
-            else:
-                r[ticket_cat[tid]] += 1
+            r[ticket_cat[tid]] += 1
 
     return {
         email: {
