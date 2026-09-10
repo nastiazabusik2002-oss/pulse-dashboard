@@ -81,7 +81,14 @@
   .kpi .v{font-family:var(--font-mono); font-size:1.35rem; font-weight:600; font-variant-numeric:tabular-nums;}
   .kpi .l{font-size:.73rem; color:var(--ink-faint); margin-top:.1rem;}
 
-  section{margin-bottom:2.4rem;}
+  section{margin-bottom:2.4rem; scroll-margin-top:64px;}
+
+  .topnav{position:sticky; top:0; z-index:60; background:var(--surface); border-bottom:1px solid var(--line); backdrop-filter:blur(6px);}
+  .topnav-inner{max-width:1720px; margin:0 auto; padding:0 .9rem; display:flex; gap:.3rem; overflow-x:auto; scrollbar-width:none;}
+  .topnav-inner::-webkit-scrollbar{display:none;}
+  .topnav-link{flex:0 0 auto; font-family:var(--font-mono); font-size:.78rem; font-weight:600; color:var(--ink-soft); text-decoration:none; padding:.85rem .8rem; white-space:nowrap; border-bottom:2px solid transparent;}
+  .topnav-link:hover{color:var(--ink);}
+  .topnav-link.active{color:var(--accent-strong); border-bottom-color:var(--accent);}
   section > h2{font-size:1.1rem; font-weight:700; margin-bottom:.25rem;}
   section > .section-desc{color:var(--ink-soft); font-size:.85rem; margin-bottom:1rem; max-width:64ch;}
 
@@ -317,6 +324,22 @@
     .nd-compare-cards{grid-template-columns:1fr;}
   }
 
+  /* ---- навантаження по днях тижня ---- */
+  .wl-week{margin-bottom:1.4rem; padding-bottom:1.2rem; border-bottom:1px solid var(--line);}
+  .wl-week:last-child{border-bottom:none; margin-bottom:0; padding-bottom:0;}
+  .wl-week-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:.7rem;}
+  .wl-week-range{font-family:var(--font-mono); font-size:.78rem; color:var(--ink-soft);}
+  .wl-week-total{font-family:var(--font-mono); font-size:.95rem; font-weight:700; color:var(--ink);}
+  .wl-week-peak .wl-week-total{color:var(--accent-strong);}
+  .wl-bars{display:flex; gap:.6rem; align-items:flex-end; height:120px;}
+  .wl-col{display:flex; flex-direction:column; align-items:center; flex:1; height:100%; justify-content:flex-end;}
+  .wl-col.wl-out{opacity:.22;}
+  .wl-val{font-family:var(--font-mono); font-size:.68rem; color:var(--ink-faint); margin-bottom:.25rem; font-variant-numeric:tabular-nums;}
+  .wl-track{width:100%; max-width:36px; flex:1; display:flex; align-items:flex-end; background:var(--surface-2); border-radius:5px 5px 0 0; overflow:hidden;}
+  .wl-fill{width:100%; background:var(--sh-chaty); border-radius:5px 5px 0 0; min-height:2px;}
+  .wl-fill.peak{background:var(--accent);}
+  .wl-dow{font-family:var(--font-mono); font-size:.62rem; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); margin-top:.35rem;}
+
   footer{border-top:1px solid var(--line); padding-top:1.2rem; font-size:.8rem; color:var(--ink-faint);}
 
   @media (max-width: 720px){
@@ -326,6 +349,17 @@
 </style>
 </head>
 <body>
+<nav class="topnav" id="topnav">
+  <div class="topnav-inner">
+    <a href="#trend" class="topnav-link">Хто зробив</a>
+    <a href="#rings" class="topnav-link">Хто скільки зробив</a>
+    <a href="#summary" class="topnav-link">Зведення / Рейтинг</a>
+    <a href="#weekload" class="topnav-link">Навантаження</a>
+    <a href="#shiftgrid" class="topnav-link">Графік змін</a>
+    <a href="#nightday" class="topnav-link">Нічні vs Денні</a>
+    <a href="#picker" class="topnav-link">По агентах</a>
+  </div>
+</nav>
 <div class="wrap">
 
   <header>
@@ -458,23 +492,16 @@
           <tfoot id="summary-tfoot"></tfoot>
         </table>
       </div>
-      <p class="range-note" id="summary-note">Листи — фактичні артиклі за обраний період, звичайні листи + фідбек разом. Чати — реальні дані з Simulator. Закрито загалом = Листи + Чати. Рейт — бюджет 3600 ₴/міс за "Ср.закрито загалом" (Носаль фіксовано 305 ₴, топ-пул +20 ₴); суму можна відредагувати вручну.</p>
+      <p class="range-note" id="summary-note">Листи — фактичні артиклі за обраний період, звичайні листи + фідбек разом. Чати — реальні дані з Simulator. Закрито загалом = Листи + Чати. Рейт — фіксоване меню сум (305 макс. Носаль, далі 350…105 ₴) розподіляється по рангу за "Ср.закрито загалом" — вище показник, більша сума з меню; суму можна відредагувати вручну.</p>
       <p class="rating-budget-note" id="rating-budget-note"></p>
     </div>
   </section>
 
-  <section id="nightday">
-    <h2>Нічні vs Денні</h2>
-    <p class="section-desc">Денний агент виконує одну функцію за зміну. Нічний — чати й фідбеки одночасно. Той самий період, що й вище.</p>
-    <div id="nd-content"></div>
-  </section>
-
-  <section id="picker">
-    <h2>По агентах</h2>
-    <p class="section-desc">Зліва — вся команда, відсортована за вчорашньою активністю (листи + фідбеки + передачі). Клікни на ім'я.</p>
-    <div class="picker">
-      <div class="agent-list" id="agent-list"></div>
-      <div class="detail" id="agent-detail"></div>
+  <section id="weekload">
+    <h2>Навантаження по днях тижня</h2>
+    <p class="section-desc">Той самий період, що й вище. Листи + фідбеки + чати по всій команді за день, розбито на тижні Пн–Нд — видно, який день тижня і який тиждень найзавантаженіші.</p>
+    <div class="range-wrap">
+      <div id="weekload-content"></div>
     </div>
   </section>
 
@@ -495,6 +522,21 @@
           <tfoot><tr id="shiftgrid-onshift"></tr></tfoot>
         </table>
       </div>
+    </div>
+  </section>
+
+  <section id="nightday">
+    <h2>Нічні vs Денні</h2>
+    <p class="section-desc">Денний агент виконує одну функцію за зміну. Нічний — чати й фідбеки одночасно. Той самий період, що й вище.</p>
+    <div id="nd-content"></div>
+  </section>
+
+  <section id="picker">
+    <h2>По агентах</h2>
+    <p class="section-desc">Зліва — вся команда, відсортована за вчорашньою активністю (листи + фідбеки + передачі). Клікни на ім'я.</p>
+    <div class="picker">
+      <div class="agent-list" id="agent-list"></div>
+      <div class="detail" id="agent-detail"></div>
     </div>
   </section>
 
@@ -1039,6 +1081,7 @@ function renderSummaryTable(){
     });
   });
 
+  renderWeekLoad(from, to);
   renderShiftGrid(from, to);
   renderNightDayBreakdown(from, to);
 }
@@ -1073,6 +1116,90 @@ function initSummary(){
   });
 
   renderSummaryTable();
+}
+
+// ---------------------------------------------------------------------------
+// Навантаження по днях тижня — листи+фідбеки+чати по всій команді за день,
+// розбито на календарні тижні Пн–Нд, щоб порівнювати дні між собою і
+// тижні між собою (спільна шкала стовпчиків на весь період).
+// ---------------------------------------------------------------------------
+
+const DOW_MON_FIRST = ['ПН','ВТ','СР','ЧТ','ПТ','СБ','НД'];
+
+function mondayOf(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y,m-1,d));
+  const dow = dt.getUTCDay(); // 0=Нд..6=Сб
+  const diff = dow===0 ? -6 : 1-dow;
+  dt.setUTCDate(dt.getUTCDate()+diff);
+  return ymd(dt);
+}
+
+function dailyLoadMap(from, to){
+  const dates = datesBetween(from, to);
+  const map = {};
+  dates.forEach(d=>{
+    const dayData = RANGE_DATA[d] || {};
+    let total = 0;
+    Object.values(dayData).forEach(c=>{ total += (c.listy||0)+(c.feedback||0)+(c.chatz||0); });
+    map[d] = total;
+  });
+  return map;
+}
+
+function computeWeeks(from, to){
+  const loadMap = dailyLoadMap(from, to);
+  const weeks = [];
+  let cursor = mondayOf(from);
+  while(cursor <= to){
+    const days = [];
+    for(let i=0;i<7;i++){
+      const d = shiftDate(cursor, i);
+      days.push({date:d, inRange: d>=from && d<=to, load: loadMap[d] || 0});
+    }
+    weeks.push({start:cursor, end:shiftDate(cursor,6), days});
+    cursor = shiftDate(cursor, 7);
+  }
+  return weeks;
+}
+
+function renderWeekLoad(from, to){
+  const weeks = computeWeeks(from, to);
+  const allInRangeLoads = weeks.flatMap(w=>w.days.filter(d=>d.inRange).map(d=>d.load));
+  const maxLoad = Math.max(1, ...allInRangeLoads);
+  const weekTotals = weeks.map(w=>w.days.filter(d=>d.inRange).reduce((s,d)=>s+d.load,0));
+  const maxWeekTotal = Math.max(...weekTotals);
+
+  if(allInRangeLoads.length===0){
+    document.getElementById('weekload-content').innerHTML = '<p class="rings-empty">Немає даних за обраний період.</p>';
+    return;
+  }
+
+  const html = weeks.map((w,wi)=>{
+    const total = weekTotals[wi];
+    const isMaxWeek = total===maxWeekTotal && total>0;
+    const dayMaxInWeek = Math.max(0, ...w.days.filter(d=>d.inRange).map(d=>d.load));
+    const barsHtml = w.days.map((d,di)=>{
+      const pct = (d.inRange && maxLoad>0) ? Math.round((d.load/maxLoad)*100) : 0;
+      const isDayMax = d.inRange && d.load===dayMaxInWeek && dayMaxInWeek>0;
+      return `
+        <div class="wl-col ${d.inRange?'':'wl-out'}">
+          <div class="wl-val">${d.inRange ? d.load : ''}</div>
+          <div class="wl-track"><div class="wl-fill${isDayMax?' peak':''}" style="height:${pct}%"></div></div>
+          <div class="wl-dow">${DOW_MON_FIRST[di]}</div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="wl-week${isMaxWeek?' wl-week-peak':''}">
+        <div class="wl-week-head">
+          <span class="wl-week-range">${fmtDateShort(w.start)} – ${fmtDateShort(w.end)}</span>
+          <span class="wl-week-total">${total}${isMaxWeek?' 🔥 найзавантаженіший':''}</span>
+        </div>
+        <div class="wl-bars">${barsHtml}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('weekload-content').innerHTML = html;
 }
 
 // ---------------------------------------------------------------------------
@@ -1129,20 +1256,29 @@ function renderShiftGrid(from, to){
 }
 
 // ---------------------------------------------------------------------------
-// Рейтинг — розподіл щомісячного бюджету за "Ср.закрито загалом".
-// Носаль (id=1) — фіксовано 305 ₴, без участі в перерахунку. Топ-пул
-// (Козицька/Грицан/Подвадцятник/Телятинська/Крапівной) отримує +20 ₴
-// бонусом поверх пропорційної суми — бонус може порушити строгий порядок
-// "вищий показник = вища сума" в межах топ-пула, це свідомий компроміс
-// (за рішенням користувача), правиться вручну за потреби.
+// Рейтинг — фіксоване меню сум, яке "бігає" по агентах залежно від рангу
+// за "Ср.закрито загалом". Носаль (id=1) — завжди 305 ₴, поза рангом.
+// Решта 14 місць отримують суми з RATING_FIXED_POOL (від найвищої до
+// найнижчої) строго по місцю в рейтингу — хто #1 за показником, той
+// забирає найбільшу суму з меню, і так далі. Значення й порядок задав
+// користувач напряму (не рахуються по формулі).
 // ---------------------------------------------------------------------------
 
 const RATING_BUDGET = 3600;
 const RATING_NOSAL_ID = 1;
 const RATING_NOSAL_FIXED = 305;
-const RATING_TOP_POOL_IDS = [4, 8, 9, 10, 11]; // Козицька, Грицан, Подвадцятник, Телятинська, Крапівной
-const RATING_TOP_POOL_BONUS = 20;
+// меню сум для решти 14 місць, від найбільшої до найменшої (305 Носаль сюди не входить)
+const RATING_FIXED_POOL_RAW = [350, 320, 300, 275, 270, 260, 250, 240, 235, 235, 155, 135, 115, 105];
 const RATING_OVERRIDES_KEY = 'pulse_rating_overrides_v1';
+
+function dedupeDescending(arr){
+  const out = [...arr];
+  for(let i=1;i<out.length;i++){
+    if(out[i] >= out[i-1]) out[i] = out[i-1]-1;
+  }
+  return out;
+}
+const RATING_FIXED_POOL = dedupeDescending(RATING_FIXED_POOL_RAW); // [...,235,234,...] — розводимо дублікат на 1 ₴
 
 function loadRatingOverrides(){
   try{ return JSON.parse(localStorage.getItem(RATING_OVERRIDES_KEY)) || {}; }
@@ -1155,46 +1291,11 @@ function ratingPeriodKey(from, to){ return `${from}_${to}`; }
 
 function computeRatingBase(summaryRows){
   const pool = summaryRows.filter(r=>r.id!==RATING_NOSAL_ID);
-  const n = pool.length;
-  const bonusTotal = RATING_TOP_POOL_IDS.length * RATING_TOP_POOL_BONUS; // 100
-  const baseBudget = (RATING_BUDGET - RATING_NOSAL_FIXED) - bonusTotal; // 3295-100=3195
-  const floor = 100;
-
   const sorted = [...pool].sort((a,b)=>(b.avgClosed||0)-(a.avgClosed||0));
-  const metrics = sorted.map(r=>r.avgClosed||0);
-  const minM = Math.min(...metrics), maxM = Math.max(...metrics);
-  const span = maxM - minM;
-  const extraBudget = baseBudget - floor*n;
-
-  let bases;
-  if(span<=0 || n===0){
-    bases = sorted.map(()=> n>0 ? floor + extraBudget/n : floor);
-  } else {
-    const weights = metrics.map(m=>(m-minM)/span);
-    const wsum = weights.reduce((s,w)=>s+w,0);
-    bases = weights.map(w=> floor + (wsum>0 ? (w/wsum)*extraBudget : extraBudget/n));
-  }
-
-  let rounded = bases.map(v=>Math.round(v));
-  const fixDrift = ()=>{
-    const drift = baseBudget - rounded.reduce((s,v)=>s+v,0);
-    if(drift!==0) rounded[0] += drift; // найвищому за показником дістається залишок округлення
-  };
-  fixDrift();
-  // строго спадний порядок (правило "всі суми різні") — зсуваємо на -1 при збігах
-  for(let i=1;i<rounded.length;i++){
-    if(rounded[i] >= rounded[i-1]) rounded[i] = rounded[i-1]-1;
-  }
-  fixDrift();
-
-  const baseById = {};
-  sorted.forEach((r,i)=>{ baseById[r.id] = rounded[i]; });
 
   const computedById = {};
-  pool.forEach(r=>{
-    let v = baseById[r.id];
-    if(RATING_TOP_POOL_IDS.includes(r.id)) v += RATING_TOP_POOL_BONUS;
-    computedById[r.id] = v;
+  sorted.forEach((r,i)=>{
+    computedById[r.id] = RATING_FIXED_POOL[i] !== undefined ? RATING_FIXED_POOL[i] : 100;
   });
   computedById[RATING_NOSAL_ID] = RATING_NOSAL_FIXED;
   return computedById;
@@ -1394,12 +1495,27 @@ function renderHeader(){
   document.getElementById('kpi-week-label').textContent = `артиклів команди за тиждень ${fmtDateShort(weekFrom)}–${fmtDateShort(yday)}`;
 }
 
+function initTopNav(){
+  if(typeof IntersectionObserver === 'undefined') return;
+  const links = [...document.querySelectorAll('.topnav-link')];
+  const sections = links.map(a => document.querySelector(a.getAttribute('href')));
+  const setActive = (id) => {
+    links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${id}`));
+  };
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if(visible.length>0) setActive(visible[0].target.id);
+  }, { rootMargin: '-64px 0px -70% 0px', threshold: 0 });
+  sections.forEach(s => s && observer.observe(s));
+}
+
 renderHeader();
 renderList();
 renderDetail();
 initRings();
 initTrend();
 initSummary();
+initTopNav();
 </script>
 </body>
 </html>
