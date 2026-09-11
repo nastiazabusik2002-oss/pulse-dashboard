@@ -10,24 +10,27 @@
 підрахунку нових тікетів (той системно недораховував роботу над уже
 наявними тікетами, типу фідбеків).
 
-Рахуємо одним проходом на всю команду за день (analyze_team_day), а не
-по кожному агенту окремо — бо власник тікета в Zammad міняється протягом
-дня, і "чий тікет" != "хто реально написав". Кожен артикль зараховуємо
-тому, хто його написав (article.created_by), звірено з офіційною
-Zammad-статистикою вручну. Дзвінки (type=="phone", лог розмови без
-тексту) в підрахунок не йдуть, як і внутрішні нотатки.
+Тікети шукаємо ОДНИМ широким проходом на все вікно (discover_and_cache_tickets),
+а не окремо на кожен день — вузький пошук "хто чіпав тікет саме в цей
+день" губив артиклі на тікетах, які чіпали ще раз пізніше (last_contact_agent_at
+зсувається вперед, і день, де реальний артикль є, більше не знаходиться).
+Кеш — по ticket_id (tickets_v1.json), тікет перефетчується тільки якщо
+його updated_at змінився. Розкладка по днях/агентах (bucket_articles_by_day)
+рахується НАНОВО щоразу з кешованих артиклів — тому жоден день не застряє
+з неправильним числом назавжди.
+
+Кожен артикль зараховуємо тому, хто його реально написав (article.created_by),
+незалежно від власника тікета. Дзвінки (type=="phone") і внутрішні нотатки
+(type=="note") в "Листи"/"Фідбек"/"Чати" не йдуть — звірено з розробником
+офіційної Zammad-статистики. Нотатка-передача в інший відділ — виняток:
+"Інший відділ" це наша власна фіча, якої в офіційній статистиці немає.
 
 /tickets/search мовчки обрізає результат на 200 записах незалежно від
-limit — без пагінації (page=) частина тікетів губилась без помилки,
-особливо в командному запиті за день. Тепер search_tickets гортає
-сторінки сама.
+limit — search_tickets сама гортає сторінки (page=).
 
 Вікно днів прив'язане до PRECISE_ANCHOR_DATE і росте по одному дню за
-раз, поки не впреться в стелю WINDOW_DAYS_MAX — це не дає першому
-прогону роздутись на години.
-
-Кеш проміжних результатів лежить у /app/cache — тому кожне наступне
-оновлення рахує наново тільки НОВІ дні, а не все вікно заново.
+раз (стеля WINDOW_DAYS_MAX), потім стає рухомим — це не дає дискавері
+розтягнутись на місяці.
 """
 
 import json
@@ -86,15 +89,10 @@ OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/www")
 OUTPUT_PATH = os.path.join(OUTPUT_DIR, "pulse.html")
 
 CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
-PRECISE_CACHE_PATH = os.path.join(CACHE_DIR, "precise_v4.json")
-# v2 -> v3: у v2 "Інший відділ" завжди виходив 0 — нотатки-передачі
-# (agent пише причину й переносить тікет у Refund/Ticketing/Invol) йшли
-# виключно як type=="note", а такі повністю виключались з підрахунку.
-# v3 -> v4: межі доби рахувались так, ніби Zammad-час уже київський —
-# насправді created_at в UTC, а Київ восени +3 (EEST). Перші ~3 години
-# нічної зміни (00:00-03:00 за Києвом) через це йшли в підрахунок
-# ПОПЕРЕДНЬОГО дня — найпомітніше саме для нічних змін.
-# Кожна нова назва файлу знову примушує пересчитати все заново.
+# Кеш по ticket_id (не по днях!) — див. коментар над discover_and_cache_tickets
+# нижче про те, чому попередній підхід (окремий пошук на кожен день) губив
+# артиклі на тікетах, які чіпали повторно пізніше.
+TICKETS_CACHE_PATH = os.path.join(CACHE_DIR, "tickets_v1.json")
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 
 # Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
@@ -202,45 +200,56 @@ def find_zammad_user(email):
 
 
 # ---------------------------------------------------------------------------
-# Точний (по-артикловий) аналіз ВСІЄЇ команди за один день, одним проходом.
+# Точний (по-артикловий) аналіз усієї команди — тепер не "на кожен день
+# окремо", а одним широким проходом на все вікно.
 #
-# Раніше рахували на кожного агента окремо (тікети, де він owner/creator),
-# але власник тікета в Zammad міняється протягом дня (тікет перекидають між
-# агентами, повертають у чергу) — тож частина реальних відповідей губилась
-# або приписувалась не тому агенту. Офіційна Zammad-статистика (з якою
-# звіряли вручну) рахує "хто фактично написав" по історії тікета, а не по
-# поточному власнику. Тому тепер: спершу одним широким запитом (по всій
-# команді разом) знаходимо ВСІ тікети, яких хтось із команди торкався за
-# день, а потім кожен артикль зараховуємо тому, хто його РЕАЛЬНО написав
-# (article.created_by), незалежно від того, хто зараз власник тікета.
+# Чому не по днях: попередній підхід шукав тікети вузько ("хто чіпав тікет
+# САМЕ в цей день", по полю last_contact_agent_at у межах доби). Але якщо
+# тікет чіпали ЩЕ РАЗ пізніше, це поле зсувається вперед — і вузький пошук
+# за той давніший день більше НЕ знаходить тікет, хоча реальний артикль
+# там є. Звірено з офіційною Zammad-статистикою: саме це — головна причина
+# недорахунку в агентів з активним листуванням, що триває кілька днів
+# (типу фідбеків).
 #
-# Дзвінки (type == "phone" — системний лог розмови, не написаний текст)
-# так само не рахуємо як артикль, як і внутрішні нотатки (type == "note") —
-# перевірено на реальних агентах з великою часткою дзвінків: без цього
-# виключення їх денна сума була в 3-4 рази більша за офіційну статистику.
+# Тепер: один широкий пошук по всій компанії за [ANCHOR .. зараз], кеш
+# артиклів по ticket_id (tickets_v1.json), тікет перефетчується тільки
+# якщо його ticket.updated_at змінився з минулого разу. Розкладка по
+# днях/агентах рахується НАНОВО щоразу з кешованих артиклів — тому вже
+# "порахований" день ніколи не застряє з неправильним числом, навіть якщо
+# тікет чіпнули знову вже після того, як день порахували.
 #
-# Пошук тікетів НЕ обмежений owner_id:(наші 15) — перевірено наживо: якщо
-# тікет ескалюють/передають комусь поза командою (навіть тимчасово), він
-# зникає з такого пошуку разом з усіма артиклями наших агентів на ньому.
-# Тому дискавері тепер по всій компанії за день, а фільтр "чи це наш
-# агент" застосовується вже на рівні автора артикля нижче. Це набагато
-# дорожче (тисячі тікетів на день замість сотень) — свідомий компроміс:
-# перший бекфіл вікна після цього фіксу займе години, а не хвилини, зате
-# рахує без цієї діри.
-def analyze_team_day(zammad_users, date_str):
-    # Межі доби рахуємо в київському часі й конвертуємо в UTC — Zammad
-    # зберігає created_at в UTC, а Київ восени +3 (EEST). Раніше межі дня
-    # рахувались так, ніби d0/d1 вже UTC (тобто зі зсувом на ці 2-3
-    # години) — для денних змін це майже непомітно, але для нічної зміни
-    # (яка якраз триває через північ за Києвом) перші ~3 години нічної
-    # роботи (00:00–03:00 за Києвом) помилково йшли в підрахунок
-    # ПОПЕРЕДНЬОГО дня.
-    y, m, d = (int(x) for x in date_str.split("-"))
-    d0_local = datetime(y, m, d, tzinfo=TZ)
-    d1_local = d0_local + timedelta(days=1)
-    d0_str = d0_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
-    d1_str = d1_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
-    rng = f"[{d0_str}Z TO {d1_str}Z]"
+# Кожен артикль зараховуємо тому, хто його РЕАЛЬНО написав (created_by),
+# незалежно від того, хто зараз власник тікета. Дзвінки (type=="phone") і
+# внутрішні нотатки (type=="note") в "Листи"/"Фідбек"/"Чати" не йдуть —
+# перевірено на реальних агентах, це узгоджено з логікою офіційної
+# статистики (яка рахує лише вхідні листи). Нотатка-передача в інший
+# відділ (Refund/Ticketing/Invol) — виняток, бо "Інший відділ" це наша
+# власна фіча, якої в офіційній статистиці взагалі немає.
+# ---------------------------------------------------------------------------
+
+def _article_kyiv_date(created_at_str):
+    dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+    return dt.astimezone(TZ).date().isoformat()
+
+
+def _ticket_category(t, tags):
+    title = t.get("title") or ""
+    gid = t.get("group_id")
+    if "feedback_all" in tags:
+        return "feedback"
+    if title.startswith("Chat –") or title.startswith("Chat -"):
+        return "chat"
+    if gid in DEPT_GROUPS:
+        return "dept"
+    return "listy"
+
+
+def discover_and_cache_tickets(anchor_date, yesterday):
+    anchor_local = datetime(anchor_date.year, anchor_date.month, anchor_date.day, tzinfo=TZ)
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    anchor_str = anchor_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
+    now_str = now_utc.strftime("%Y-%m-%dT%H:%M:%S")
+    rng = f"[{anchor_str}Z TO {now_str}Z]"
 
     q_created = f"created_at:{rng}"
     q_touched = f"last_contact_agent_at:{rng}"
@@ -249,79 +258,110 @@ def analyze_team_day(zammad_users, date_str):
     for q in (q_created, q_touched):
         for t in search_tickets(q):
             tickets[t["id"]] = t
+    print(f"[refresh] дискавері (широке вікно {anchor_date.isoformat()}..зараз): {len(tickets)} тікетів")
 
-    def _tags_for(tid):
-        return tid, zammad_get("/tags", {"object": "Ticket", "o_id": tid}).get("tags", [])
+    ticket_cache = _load_json(TICKETS_CACHE_PATH, {})
 
-    ticket_cat = {}
-    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-        for tid, tags in pool.map(_tags_for, tickets.keys()):
-            t = tickets[tid]
-            title = t.get("title") or ""
-            gid = t.get("group_id")
-            if "feedback_all" in tags:
-                ticket_cat[tid] = "feedback"
-            elif title.startswith("Chat –") or title.startswith("Chat -"):
-                ticket_cat[tid] = "chat"
-            elif gid in DEPT_GROUPS:
-                ticket_cat[tid] = "dept"
-            else:
-                ticket_cat[tid] = "listy"
+    to_refresh = [
+        (tid, t) for tid, t in tickets.items()
+        if str(tid) not in ticket_cache or ticket_cache[str(tid)].get("updated_at") != t.get("updated_at")
+    ]
+    print(f"[refresh] тікетів на (пере)фетч: {len(to_refresh)} з {len(tickets)}")
 
+    def _fetch_one(item):
+        tid, t = item
+        tags = zammad_get("/tags", {"object": "Ticket", "o_id": tid}).get("tags", [])
+        cat = _ticket_category(t, tags)
+        arts_raw = zammad_get(f"/ticket_articles/by_ticket/{tid}")
+        arts = [
+            {
+                "created_by": a.get("created_by"),
+                "sender": a.get("sender"),
+                "type": a.get("type"),
+                "created_at": a.get("created_at"),
+            }
+            for a in arts_raw
+        ]
+        return tid, {"updated_at": t.get("updated_at"), "cat": cat, "articles": arts}
+
+    if to_refresh:
+        with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+            for i, (tid, entry) in enumerate(pool.map(_fetch_one, to_refresh)):
+                ticket_cache[str(tid)] = entry
+                if i % 300 == 0:
+                    _save_json(TICKETS_CACHE_PATH, ticket_cache)
+        _save_json(TICKETS_CACHE_PATH, ticket_cache)
+
+    # прибираємо з кешу тікети, які давно випали з вікна дискавері — щоб
+    # файл не ріс вічно
+    cutoff = (yesterday - timedelta(days=CACHE_KEEP_DAYS)).isoformat()
+    discovered_ids = set(str(tid) for tid in tickets.keys())
+    for key in list(ticket_cache.keys()):
+        if key in discovered_ids:
+            continue
+        upd = (ticket_cache[key].get("updated_at") or "")[:10]
+        if upd and upd < cutoff:
+            del ticket_cache[key]
+    _save_json(TICKETS_CACHE_PATH, ticket_cache)
+
+    return ticket_cache
+
+
+def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
     login_to_email = {zu["login"]: email for email, zu in zammad_users.items()}
-    per_agent = {
-        email: {"listy": 0, "feedback": 0, "chat": 0, "dept": 0, "notes": 0, "touches": 0, "tickets": set()}
-        for email in zammad_users
+    days_set = set(precise_days)
+    result = {
+        d: {
+            email: {"listy": 0, "feedback": 0, "chat": 0, "dept": 0, "notes": 0, "touches": 0, "tickets": set()}
+            for email in zammad_users
+        }
+        for d in precise_days
     }
 
-    def _articles_for(tid):
-        return tid, zammad_get(f"/ticket_articles/by_ticket/{tid}")
-
-    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-        articles_by_ticket = list(pool.map(_articles_for, tickets.keys()))
-
-    for tid, arts in articles_by_ticket:
-        for a in arts:
+    for tid, entry in ticket_cache.items():
+        cat = entry["cat"]
+        for a in entry["articles"]:
             if a.get("sender") != "Agent":
                 continue
             email = login_to_email.get(a.get("created_by"))
             if not email:
-                continue  # артикль не від когось із нашої команди (тімлід/бот/інтеграція)
-            ca = a.get("created_at", "")
-            if not (d0_str <= ca < d1_str):
                 continue
-            r = per_agent[email]
+            ca = a.get("created_at") or ""
+            if not ca:
+                continue
+            try:
+                d = _article_kyiv_date(ca)
+            except ValueError:
+                continue
+            if d not in days_set:
+                continue
+            r = result[d][email]
             r["touches"] += 1
             r["tickets"].add(tid)
             atype = a.get("type")
             if atype == "phone":
                 continue
             if atype == "note":
-                # звірено з розробником офіційної Zammad-статистики: він
-                # рахує лише вхідні листи (info@... поштові скриньки) і
-                # нотатки НЕ рахує взагалі. Але "Листи" тут звіряються з
-                # його числами, а "Інший відділ" — окрема, наша власна
-                # фіча (в нього такої категорії просто немає), тому саме
-                # для неї нотатку-передачу (агент пише причину й переносить
-                # тікет у Refund/Ticketing/Invol) рахуємо — вона ніколи не
-                # потрапляє в listy/feedback/chat, тільки в dept.
                 r["notes"] += 1
-                if ticket_cat[tid] == "dept":
+                if cat == "dept":
                     r["dept"] += 1
                 continue
-            r[ticket_cat[tid]] += 1
+            r[cat] += 1
 
     return {
-        email: {
-            "listy": r["listy"],
-            "feedback": r["feedback"],
-            "chatz": r["chat"],
-            "dept": r["dept"],
-            "notes": r["notes"],
-            "touches": r["touches"],
-            "tickets": len(r["tickets"]),
+        d: {
+            email: {
+                "listy": r["listy"],
+                "feedback": r["feedback"],
+                "chatz": r["chat"],
+                "dept": r["dept"],
+                "notes": r["notes"],
+                "touches": r["touches"],
+                "tickets": len(r["tickets"]),
+            }
+            for email, r in day_data.items()
         }
-        for email, r in per_agent.items()
+        for d, day_data in result.items()
     }
 
 
@@ -507,15 +547,6 @@ def regenerate():
     print(f"[refresh] старт {datetime.now(TZ).isoformat()}")
     yesterday = datetime.now(TZ).date() - timedelta(days=1)
 
-    precise_cache = _load_json(PRECISE_CACHE_PATH, {})
-    # "Вчора" завжди рахуємо наново, навіть якщо вже є в кеші: перший цикл
-    # оновлення після півночі рахує щойно завершений день, і якщо в цей
-    # момент Zammad ще не встиг доіндексувати останні артиклі (або сам день
-    # ще технічно не "закрився" на момент запуску) — заниженого числа
-    # більше НЕ лишається в кеші назавжди, бо тут ми його прибираємо перед
-    # циклом і воно перераховується з нуля щоразу.
-    precise_cache.pop(yesterday.isoformat(), None)
-
     days_since_anchor = (yesterday - PRECISE_ANCHOR_DATE).days + 1
     window_len = max(1, min(WINDOW_DAYS_MAX, days_since_anchor))
     precise_days = _date_range(yesterday, window_len)
@@ -535,21 +566,16 @@ def regenerate():
             print(f"[refresh] помилка пошуку {member['email']}:")
             traceback.print_exc()
 
-    # --- точні дані (для AGENTS.daily / yday_*) ---
-    for d in precise_days:
-        if d in precise_cache:
-            continue
-        print(f"[refresh] тягну точні дані за {d}")
-        try:
-            precise_cache[d] = analyze_team_day(zammad_users, d)
-        except Exception:
-            print(f"[refresh] помилка analyze_team_day {d}:")
-            traceback.print_exc()
-            continue
-        _save_json(PRECISE_CACHE_PATH, precise_cache)
-
-    _prune_cache(precise_cache, yesterday - timedelta(days=CACHE_KEEP_DAYS))
-    _save_json(PRECISE_CACHE_PATH, precise_cache)
+    # --- точні дані (для AGENTS.daily / yday_*) — широке дискавері на все
+    # вікно + розкладка по днях наново з кешу тікетів щоразу ---
+    try:
+        anchor_for_discovery = date.fromisoformat(precise_days[0])
+        ticket_cache = discover_and_cache_tickets(anchor_for_discovery, yesterday)
+        precise_cache = bucket_articles_by_day(ticket_cache, zammad_users, precise_days)
+    except Exception:
+        print("[refresh] помилка дискавері/розкладки по днях:")
+        traceback.print_exc()
+        return
 
     # --- зміни (один запит на весь розклад команди, далі рахуємо по днях у Python) ---
     team_schedule = fetch_team_schedule()
@@ -741,9 +767,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"refresh triggered")
         elif parsed.path == "/refresh-range":
-            # ручний перерахунок конкретного відрізка днів (мимо звичайного
-            # "тільки нові дні" потоку) — щоб не чекати повний бекфіл вікна,
-            # коли треба освіжити лише кілька конкретних днів.
+            # примусово скидає з кешу тікети, що мають артиклі в цьому
+            # діапазоні дат (перефетчує їх наново, навіть якщо
+            # ticket.updated_at не змінився) — для ручної перевірки. У
+            # звичайному режимі це НЕ потрібно: розкладка по днях і так
+            # рахується наново з кешу тікетів щоразу (жоден день більше не
+            # застряє з неправильним числом сам по собі).
             # POST /refresh-range?from=2026-09-01&to=2026-09-10
             qs = parse_qs(parsed.query)
             frm = qs.get("from", [None])[0]
@@ -755,10 +784,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             def _refresh_range():
-                precise_cache = _load_json(PRECISE_CACHE_PATH, {})
-                for d in _date_range_between(frm, to):
-                    precise_cache.pop(d, None)
-                _save_json(PRECISE_CACHE_PATH, precise_cache)
+                days = set(_date_range_between(frm, to))
+                ticket_cache = _load_json(TICKETS_CACHE_PATH, {})
+                dropped = 0
+                for tid in list(ticket_cache.keys()):
+                    entry = ticket_cache[tid]
+                    for a in entry.get("articles", []):
+                        ca = a.get("created_at") or ""
+                        try:
+                            d = _article_kyiv_date(ca)
+                        except ValueError:
+                            continue
+                        if d in days:
+                            del ticket_cache[tid]
+                            dropped += 1
+                            break
+                _save_json(TICKETS_CACHE_PATH, ticket_cache)
+                print(f"[refresh-range] скинула {dropped} тікетів з кешу за {frm}..{to}")
                 regenerate()
 
             threading.Thread(target=_refresh_range, daemon=True).start()
