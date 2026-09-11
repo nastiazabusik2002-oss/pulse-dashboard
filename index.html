@@ -509,16 +509,48 @@
 
   <section id="weekload">
     <h2>Навантаження по днях тижня</h2>
-    <p class="section-desc">Той самий період, що й вище. Листи + фідбеки + чати по всій команді за день, розбито на тижні Пн–Нд — видно, який день тижня і який тиждень найзавантаженіші.</p>
+    <p class="section-desc">Свій період — не залежить від інших розділів. Листи + фідбеки + чати по всій команді за день, розбито на тижні Пн–Нд — видно, який день тижня і який тиждень найзавантаженіші.</p>
     <div class="range-wrap">
+      <div class="range-controls">
+        <div class="range-field">
+          <label for="weekload-from">Від</label>
+          <input type="date" id="weekload-from">
+        </div>
+        <div class="range-field">
+          <label for="weekload-to">До</label>
+          <input type="date" id="weekload-to">
+        </div>
+        <div class="range-presets" id="weekload-presets">
+          <button class="range-preset" data-weekload-preset="last-week">Минулий тиждень</button>
+          <button class="range-preset" data-weekload-preset="this-month">Поточний місяць</button>
+          <button class="range-preset" data-weekload-preset="last-month">Минулий місяць</button>
+        </div>
+        <div class="range-span" id="weekload-span"></div>
+      </div>
       <div id="weekload-content"></div>
     </div>
   </section>
 
   <section id="shiftgrid">
     <h2>Графік змін</h2>
-    <p class="section-desc">Той самий період, що й у "Зведенні за період" вище. Число в клітинці — початок зміни (година), «В» — відпустка, порожньо — вихідний.</p>
+    <p class="section-desc">Свій період — не залежить від інших розділів. Число в клітинці — початок зміни (година), «В» — відпустка, порожньо — вихідний.</p>
     <div class="range-wrap">
+      <div class="range-controls">
+        <div class="range-field">
+          <label for="shiftgrid-from">Від</label>
+          <input type="date" id="shiftgrid-from">
+        </div>
+        <div class="range-field">
+          <label for="shiftgrid-to">До</label>
+          <input type="date" id="shiftgrid-to">
+        </div>
+        <div class="range-presets" id="shiftgrid-presets">
+          <button class="range-preset" data-shiftgrid-preset="last-week">Минулий тиждень</button>
+          <button class="range-preset" data-shiftgrid-preset="this-month">Поточний місяць</button>
+          <button class="range-preset" data-shiftgrid-preset="last-month">Минулий місяць</button>
+        </div>
+        <div class="range-span" id="shiftgrid-span"></div>
+      </div>
       <div class="shiftgrid-wrap">
         <table class="shiftgrid">
           <thead>
@@ -537,8 +569,26 @@
 
   <section id="nightday">
     <h2>Нічні vs Денні</h2>
-    <p class="section-desc">Денний агент виконує одну функцію за зміну. Нічний — чати й фідбеки одночасно. Той самий період, що й вище.</p>
-    <div id="nd-content"></div>
+    <p class="section-desc">Свій період — не залежить від інших розділів. Денний агент виконує одну функцію за зміну. Нічний — чати й фідбеки одночасно.</p>
+    <div class="range-wrap">
+      <div class="range-controls">
+        <div class="range-field">
+          <label for="nightday-from">Від</label>
+          <input type="date" id="nightday-from">
+        </div>
+        <div class="range-field">
+          <label for="nightday-to">До</label>
+          <input type="date" id="nightday-to">
+        </div>
+        <div class="range-presets" id="nightday-presets">
+          <button class="range-preset" data-nightday-preset="last-week">Минулий тиждень</button>
+          <button class="range-preset" data-nightday-preset="this-month">Поточний місяць</button>
+          <button class="range-preset" data-nightday-preset="last-month">Минулий місяць</button>
+        </div>
+        <div class="range-span" id="nightday-span"></div>
+      </div>
+      <div id="nd-content"></div>
+    </div>
   </section>
 
   <section id="picker">
@@ -552,7 +602,7 @@
 
   <footer>
     Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
-    Оновлено: 2026-09-11, 12:45 (Europe/Kiev)
+    Оновлено: 2026-09-11, 20:17 (Europe/Kiev)
   </footer>
 </div>
 
@@ -1091,9 +1141,46 @@ function renderSummaryTable(){
     });
   });
 
-  renderWeekLoad(from, to);
-  renderShiftGrid(from, to);
-  renderNightDayBreakdown(from, to);
+}
+
+// ---------------------------------------------------------------------------
+// Загальний ініціалізатор Від/До-пікера для секцій, які мають ВЛАСНИЙ,
+// незалежний період (Навантаження / Графік змін / Нічні vs Денні) — щоб
+// зміна дати в одній секції не переставляла дані в інших непомітно.
+// ---------------------------------------------------------------------------
+function initRangePicker(prefix, renderFn, defaultDays){
+  const fromInput = document.getElementById(`${prefix}-from`);
+  const toInput = document.getElementById(`${prefix}-to`);
+  fromInput.min = toInput.min = RANGE_MIN;
+  fromInput.max = toInput.max = RANGE_MAX;
+  fromInput.value = shiftDate(RANGE_MAX, -(defaultDays-1));
+  toInput.value = RANGE_MAX;
+
+  const run = () => {
+    let from = fromInput.value || shiftDate(RANGE_MAX, -(defaultDays-1));
+    let to = toInput.value || RANGE_MAX;
+    if(from < RANGE_MIN) from = RANGE_MIN;
+    if(to > RANGE_MAX) to = RANGE_MAX;
+    if(from > to) from = to;
+    fromInput.value = from; toInput.value = to;
+    const span = document.getElementById(`${prefix}-span`);
+    if(span) span.textContent = `${fmtDateShort(from)} – ${fmtDateShort(to)} · ${datesBetween(from,to).length} дн.`;
+    renderFn(from, to);
+  };
+
+  fromInput.addEventListener('change', run);
+  toInput.addEventListener('change', run);
+
+  document.querySelectorAll(`#${prefix}-presets .range-preset`).forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [from, to] = summaryPresetRange(btn.dataset[`${prefix}Preset`]);
+      fromInput.value = from; toInput.value = to;
+      document.querySelectorAll(`#${prefix}-presets .range-preset`).forEach(b=>b.classList.toggle('active', b===btn));
+      run();
+    });
+  });
+
+  run();
 }
 
 function initSummary(){
@@ -1539,6 +1626,9 @@ renderDetail();
 initRings();
 initTrend();
 initSummary();
+initRangePicker('weekload', renderWeekLoad, 7);
+initRangePicker('shiftgrid', renderShiftGrid, 7);
+initRangePicker('nightday', renderNightDayBreakdown, 7);
 initTopNav();
 </script>
 </body>
