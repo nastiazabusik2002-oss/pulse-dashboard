@@ -39,6 +39,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
 from zoneinfo import ZoneInfo
 
 import requests
@@ -296,12 +297,15 @@ def analyze_team_day(zammad_users, date_str):
             if atype == "phone":
                 continue
             if atype == "note":
+                # звірено з розробником офіційної Zammad-статистики: він
+                # рахує лише вхідні листи (info@... поштові скриньки) і
+                # нотатки НЕ рахує взагалі. Але "Листи" тут звіряються з
+                # його числами, а "Інший відділ" — окрема, наша власна
+                # фіча (в нього такої категорії просто немає), тому саме
+                # для неї нотатку-передачу (агент пише причину й переносить
+                # тікет у Refund/Ticketing/Invol) рахуємо — вона ніколи не
+                # потрапляє в listy/feedback/chat, тільки в dept.
                 r["notes"] += 1
-                # передача в інший відділ оформлюється саме внутрішньою
-                # нотаткою (агент пише причину і переносить тікет у
-                # Refund/Ticketing/Invol) — це реальна "передача", не
-                # службова робоча нотатка, тому саме тут notes рахуємо
-                # ще й як dept, а не пропускаємо.
                 if ticket_cat[tid] == "dept":
                     r["dept"] += 1
                 continue
@@ -482,6 +486,12 @@ def _date_range(end_date, days):
     return [(end_date - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
 
 
+def _date_range_between(from_str, to_str):
+    d0 = date.fromisoformat(from_str)
+    d1 = date.fromisoformat(to_str)
+    return [(d0 + timedelta(days=i)).isoformat() for i in range((d1 - d0).days + 1)]
+
+
 def _prune_cache(cache, keep_days_before):
     cutoff = keep_days_before.isoformat()
     for d in list(cache.keys()):
@@ -498,6 +508,13 @@ def regenerate():
     yesterday = datetime.now(TZ).date() - timedelta(days=1)
 
     precise_cache = _load_json(PRECISE_CACHE_PATH, {})
+    # "Вчора" завжди рахуємо наново, навіть якщо вже є в кеші: перший цикл
+    # оновлення після півночі рахує щойно завершений день, і якщо в цей
+    # момент Zammad ще не встиг доіндексувати останні артиклі (або сам день
+    # ще технічно не "закрився" на момент запуску) — заниженого числа
+    # більше НЕ лишається в кеші назавжди, бо тут ми його прибираємо перед
+    # циклом і воно перераховується з нуля щоразу.
+    precise_cache.pop(yesterday.isoformat(), None)
 
     days_since_anchor = (yesterday - PRECISE_ANCHOR_DATE).days + 1
     window_len = max(1, min(WINDOW_DAYS_MAX, days_since_anchor))
@@ -717,11 +734,37 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"dashboard is not generated yet, first refresh still running")
 
     def do_POST(self):
-        if self.path == "/refresh":
+        parsed = urlparse(self.path)
+        if parsed.path == "/refresh":
             threading.Thread(target=regenerate, daemon=True).start()
             self.send_response(202)
             self.end_headers()
             self.wfile.write(b"refresh triggered")
+        elif parsed.path == "/refresh-range":
+            # ручний перерахунок конкретного відрізка днів (мимо звичайного
+            # "тільки нові дні" потоку) — щоб не чекати повний бекфіл вікна,
+            # коли треба освіжити лише кілька конкретних днів.
+            # POST /refresh-range?from=2026-09-01&to=2026-09-10
+            qs = parse_qs(parsed.query)
+            frm = qs.get("from", [None])[0]
+            to = qs.get("to", [None])[0]
+            if not frm or not to:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"potribno from i to (YYYY-MM-DD)")
+                return
+
+            def _refresh_range():
+                precise_cache = _load_json(PRECISE_CACHE_PATH, {})
+                for d in _date_range_between(frm, to):
+                    precise_cache.pop(d, None)
+                _save_json(PRECISE_CACHE_PATH, precise_cache)
+                regenerate()
+
+            threading.Thread(target=_refresh_range, daemon=True).start()
+            self.send_response(202)
+            self.end_headers()
+            self.wfile.write(f"refresh-range triggered: {frm}..{to}".encode())
         else:
             self.send_response(404)
             self.end_headers()
