@@ -158,6 +158,8 @@ SIMULATOR_ACTORS = {
 
 FETCH_WORKERS = 10  # паралельні запити тегів/артиклів по тікетах — послідовно
                      # на командний день (сотні тікетів) це займало б години
+FETCH_CHUNK_SIZE = 1000  # тікетів за одну партію — обмежує пікову пам'ять
+                          # при широкому дискавері (десятки тисяч тікетів)
 
 _session = requests.Session()
 _session.headers.update({"Authorization": f"Token token={ZAMMAD_TOKEN}"})
@@ -284,13 +286,20 @@ def discover_and_cache_tickets(anchor_date, yesterday):
         ]
         return tid, {"updated_at": t.get("updated_at"), "cat": cat, "articles": arts}
 
+    # партіями по FETCH_CHUNK_SIZE — ThreadPoolExecutor.map() ставить в
+    # чергу ВСІ елементи одразу (усі Future одночасно в пам'яті), і на
+    # десятках тисяч тікетів (усе широке вікно за раз) це разом з
+    # артиклями кожного тікета виходило за ліміт пам'яті пода (OOM,
+    # exit 137) — под падав і перезапускався, так і не дорахувавши.
+    # Партіями пікове споживання обмежене розміром однієї партії.
     if to_refresh:
-        with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-            for i, (tid, entry) in enumerate(pool.map(_fetch_one, to_refresh)):
-                ticket_cache[str(tid)] = entry
-                if i % 300 == 0:
-                    _save_json(TICKETS_CACHE_PATH, ticket_cache)
-        _save_json(TICKETS_CACHE_PATH, ticket_cache)
+        for start in range(0, len(to_refresh), FETCH_CHUNK_SIZE):
+            chunk = to_refresh[start:start + FETCH_CHUNK_SIZE]
+            with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+                for tid, entry in pool.map(_fetch_one, chunk):
+                    ticket_cache[str(tid)] = entry
+            _save_json(TICKETS_CACHE_PATH, ticket_cache)
+            print(f"[refresh] оброблено {min(start+FETCH_CHUNK_SIZE, len(to_refresh))} з {len(to_refresh)} тікетів")
 
     # прибираємо з кешу тікети, які давно випали з вікна дискавері — щоб
     # файл не ріс вічно
