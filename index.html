@@ -280,6 +280,18 @@
   .rating-reset.show{visibility:visible;}
   .rating-budget-note{margin-top:.7rem; font-size:.76rem; color:var(--ink-faint);}
   .rating-budget-note.warn{color:var(--sh-senior);}
+
+  /* ---- Simulator-звіти (ринки / AVIA-теми / мови / тижнева таблиця) ---- */
+  .simrep-kinds{display:flex; gap:.5rem; flex-wrap:wrap; margin:0 0 1rem;}
+  .simrep-actions, .table-actions{display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;}
+  .simrep-actions button, .table-actions button{font-family:var(--font-mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:.5rem .8rem; cursor:pointer; color:var(--ink-soft);}
+  .simrep-actions button:hover:not(:disabled), .table-actions button:hover:not(:disabled){background:var(--accent-soft); color:var(--accent-strong);}
+  .simrep-actions button:disabled, .table-actions button:disabled{opacity:.4; cursor:not-allowed;}
+  .simrep-actions button.primary{background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent);}
+  .simrep-status{font-size:.8rem; color:var(--ink-faint); min-height:1.1em;}
+  .simrep-status.err{color:var(--sh-senior);}
+  .simrep-status.ok{color:var(--good);}
+  #simrep-status{margin-bottom:.8rem;}
   .nd-block{margin-top:1.4rem;}
   .nd-block h4{font-size:.82rem; margin:0 0 .5rem; color:var(--ink-soft);}
   table.nd-table{border-collapse:collapse; width:100%; font-size:.82rem;}
@@ -367,6 +379,7 @@
     <a href="#weekload" class="topnav-link">Навантаження</a>
     <a href="#shiftgrid" class="topnav-link">Графік змін</a>
     <a href="#nightday" class="topnav-link">Нічні vs Денні</a>
+    <a href="#simreports" class="topnav-link">Simulator-звіти</a>
     <a href="#picker" class="topnav-link">По агентах</a>
   </div>
 </nav>
@@ -482,6 +495,11 @@
         </div>
         <div class="range-span" id="summary-span"></div>
       </div>
+      <div class="table-actions">
+        <button type="button" id="summary-copy">Скопіювати таблицю</button>
+        <button type="button" id="summary-csv">Завантажити CSV</button>
+        <span class="simrep-status" id="summary-export-status"></span>
+      </div>
       <div class="range-table-wrap">
         <table class="range-table" id="summary-table">
           <thead>
@@ -591,6 +609,48 @@
     </div>
   </section>
 
+  <section id="simreports">
+    <h2>Simulator-звіти</h2>
+    <p class="section-desc">Ринки, теми AVIA, мови й тижнева таблиця "Поступило/Відповіли/AI chats" — ті самі дашборди Simulator, які раніше збирались вручну щомісяця чи щотижня. Обери період і тип звіту, натисни «Показати», потім скопіюй у Google Таблиці.</p>
+    <div class="range-wrap">
+      <div class="range-controls">
+        <div class="range-field">
+          <label for="simrep-from">Від</label>
+          <input type="date" id="simrep-from">
+        </div>
+        <div class="range-field">
+          <label for="simrep-to">До</label>
+          <input type="date" id="simrep-to">
+        </div>
+        <div class="range-presets" id="simrep-presets">
+          <button class="range-preset" data-simrep-preset="last-week">Минулий тиждень</button>
+          <button class="range-preset" data-simrep-preset="this-month">Поточний місяць</button>
+          <button class="range-preset" data-simrep-preset="last-month">Минулий місяць</button>
+        </div>
+        <div class="range-span" id="simrep-span"></div>
+      </div>
+      <div class="simrep-kinds" id="simrep-kinds">
+        <button class="shift-chip active" data-simrep-kind="markets">Ринки</button>
+        <button class="shift-chip" data-simrep-kind="avia">Теми AVIA</button>
+        <button class="shift-chip" data-simrep-kind="languages">Мови</button>
+        <button class="shift-chip" data-simrep-kind="weekly">Тижнева таблиця</button>
+      </div>
+      <div class="simrep-actions">
+        <button type="button" class="primary" id="simrep-run">Показати</button>
+        <button type="button" id="simrep-copy" disabled>Скопіювати таблицю</button>
+        <button type="button" id="simrep-csv" disabled>Завантажити CSV</button>
+      </div>
+      <div class="simrep-status" id="simrep-status"></div>
+      <div class="range-table-wrap">
+        <table class="range-table" id="simrep-table" style="display:none">
+          <thead><tr id="simrep-thead"></tr></thead>
+          <tbody id="simrep-tbody"></tbody>
+        </table>
+      </div>
+      <p class="range-note">Дані тягнуться наживо з Simulator у момент натискання «Показати» (не кешуються на бекенді). Якщо бачиш помилку про токен — він сесійний і час від часу згасає, треба взяти новий (див. README pulse-dashboard-rancher).</p>
+    </div>
+  </section>
+
   <section id="picker">
     <h2>По агентах</h2>
     <p class="section-desc">Зліва — вся команда, відсортована за вчорашньою активністю (листи + фідбеки + передачі). Клікни на ім'я.</p>
@@ -602,7 +662,7 @@
 
   <footer>
     Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
-    Оновлено: 2026-09-14, 13:43 (Europe/Kiev)
+    Оновлено: 2026-09-14, 21:43 (Europe/Kiev)
   </footer>
 </div>
 
@@ -1053,6 +1113,9 @@ function renderSummaryTable(){
   rows.forEach(r=>{ totals.listy+=r.listy; totals.chatz+=r.chatz; totals.chatShifts+=r.chatShifts; totals.totalShifts+=r.totalShifts; totals.closed+=r.closed; totals.rating+=r.rating; });
   const totalsAvgChat = totals.chatShifts>0 ? Math.round((totals.chatz/totals.chatShifts)*10)/10 : null;
   const totalsAvgClosed = totals.totalShifts>0 ? Math.round((totals.closed/totals.totalShifts)*10)/10 : null;
+
+  summaryExportRows = rows.map((r,i)=>[i+1, r.name, r.listy, r.chatz, r.chatShifts, r.avgChat===null?'—':r.avgChat, r.totalShifts, r.closed, r.avgClosed===null?'—':r.avgClosed, r.rating]);
+  summaryExportRows.push(['', 'Разом', totals.listy, totals.chatz, totals.chatShifts, totalsAvgChat===null?'—':totalsAvgChat, totals.totalShifts, totals.closed, totalsAvgClosed===null?'—':totalsAvgClosed, totals.rating]);
 
   const tbody = document.getElementById('summary-tbody');
   tbody.innerHTML = rows.map((r,i)=>`
@@ -1620,15 +1683,172 @@ function initTopNav(){
   sections.forEach(s => s && observer.observe(s));
 }
 
+// ---------------------------------------------------------------------------
+// Simulator-звіти (ринки / AVIA-теми / мови / тижнева таблиця) — власний
+// період БЕЗ обмеження RANGE_MIN/RANGE_MAX (це окремі дашборди Simulator,
+// не пов'язані з вікном Zammad-дискавері), дані тягнуться наживо з бекенду
+// (/simulator-report), нічого не кешується на клієнті.
+// ---------------------------------------------------------------------------
+let simrepKind = 'markets';
+let simrepData = null;
+
+function initSimReports(){
+  const fromInput = document.getElementById('simrep-from');
+  const toInput = document.getElementById('simrep-to');
+  const today = ymd(todayUTC());
+  fromInput.value = shiftDate(today, -6);
+  toInput.value = today;
+
+  document.querySelectorAll('#simrep-presets .range-preset').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [from, to] = summaryPresetRange(btn.dataset.simrepPreset);
+      fromInput.value = from; toInput.value = to;
+      document.querySelectorAll('#simrep-presets .range-preset').forEach(b=>b.classList.toggle('active', b===btn));
+      runSimReport();
+    });
+  });
+
+  document.querySelectorAll('#simrep-kinds .shift-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      simrepKind = chip.dataset.simrepKind;
+      document.querySelectorAll('#simrep-kinds .shift-chip').forEach(c=>c.classList.toggle('active', c===chip));
+      runSimReport();
+    });
+  });
+
+  document.getElementById('simrep-run').addEventListener('click', runSimReport);
+  document.getElementById('simrep-copy').addEventListener('click', copySimReport);
+  document.getElementById('simrep-csv').addEventListener('click', downloadSimReportCsv);
+}
+
+async function runSimReport(){
+  const from = document.getElementById('simrep-from').value;
+  const to = document.getElementById('simrep-to').value;
+  const status = document.getElementById('simrep-status');
+  const table = document.getElementById('simrep-table');
+  const copyBtn = document.getElementById('simrep-copy');
+  const csvBtn = document.getElementById('simrep-csv');
+  if(!from || !to || from > to){
+    status.textContent = 'Перевір дати — "Від" має бути не пізніше "До".';
+    status.className = 'simrep-status err';
+    return;
+  }
+  status.textContent = 'Тягну дані з Simulator…';
+  status.className = 'simrep-status';
+  copyBtn.disabled = true; csvBtn.disabled = true;
+  table.style.display = 'none';
+  simrepData = null;
+
+  try{
+    const r = await fetch(`/simulator-report?kind=${encodeURIComponent(simrepKind)}&from=${from}&to=${to}`);
+    const body = await r.json();
+    if(!r.ok){
+      status.textContent = body.error || `Помилка ${r.status}`;
+      status.className = 'simrep-status err';
+      return;
+    }
+    simrepData = body;
+    renderSimReportTable(body);
+    status.textContent = `Готово · ${fmtDateShort(from)} – ${fmtDateShort(to)}` + (body.total !== undefined ? ` · разом ${body.total}` : '');
+    status.className = 'simrep-status ok';
+    copyBtn.disabled = false; csvBtn.disabled = false;
+  }catch(e){
+    status.textContent = 'Не вдалось з\'єднатись з бекендом.';
+    status.className = 'simrep-status err';
+  }
+}
+
+function renderSimReportTable(body){
+  const thead = document.getElementById('simrep-thead');
+  const tbody = document.getElementById('simrep-tbody');
+  const table = document.getElementById('simrep-table');
+  thead.innerHTML = body.columns.map(c=>`<th>${c}</th>`).join('');
+  tbody.innerHTML = body.rows.map(row=>
+    `<tr>${row.map((v,i)=>`<td class="${i===0?'name':''}">${v}</td>`).join('')}</tr>`
+  ).join('');
+  table.style.display = '';
+}
+
+// ---------------------------------------------------------------------------
+// Спільні хелпери "скопіювати/завантажити таблицю" — використовуються і
+// вкладкою Simulator-звіти, і "Зведення за період" (можна переюзати й для
+// інших range-table за потреби).
+// ---------------------------------------------------------------------------
+function tableToTsv(columns, rows){
+  const lines = [columns.join('\t')];
+  rows.forEach(row=> lines.push(row.join('\t')));
+  return lines.join('\n');
+}
+
+function tableToCsvBlob(columns, rows){
+  const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v;
+  const lines = [columns.map(esc).join(',')];
+  rows.forEach(row=> lines.push(row.map(esc).join(',')));
+  return new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copyTableToClipboard(columns, rows, statusEl){
+  try{
+    await navigator.clipboard.writeText(tableToTsv(columns, rows));
+    if(statusEl){ statusEl.textContent = 'Скопійовано — встав у Google Таблиці (Ctrl/Cmd+V).'; statusEl.className = 'simrep-status ok'; }
+  }catch(e){
+    if(statusEl){ statusEl.textContent = 'Не вдалось скопіювати — виділи таблицю вручну.'; statusEl.className = 'simrep-status err'; }
+  }
+}
+
+function simReportColumns(){ return simrepData ? simrepData.columns : []; }
+function simReportRows(){ return simrepData ? simrepData.rows : []; }
+
+async function copySimReport(){
+  await copyTableToClipboard(simReportColumns(), simReportRows(), document.getElementById('simrep-status'));
+}
+
+function downloadSimReportCsv(){
+  if(!simrepData) return;
+  const filename = `simulator-${simrepKind}-${document.getElementById('simrep-from').value}_${document.getElementById('simrep-to').value}.csv`;
+  downloadBlob(tableToCsvBlob(simrepData.columns, simrepData.rows), filename);
+}
+
+// ---------------------------------------------------------------------------
+// Експорт "Зведення за період" — та сама пара кнопок, дані беруться з
+// останнього відрендереного summaryExport* (оновлюється в renderSummaryTable).
+// ---------------------------------------------------------------------------
+let summaryExportColumns = ['#','Агент','Листи','Чати','К-сть змін-чатів','Ср.чатів/зміна','К-сть змін','Закрито загалом','Ср.закрито загалом','Рейт (₴)'];
+let summaryExportRows = [];
+
+function initSummaryExport(){
+  document.getElementById('summary-copy').addEventListener('click', ()=>{
+    copyTableToClipboard(summaryExportColumns, summaryExportRows, document.getElementById('summary-export-status'));
+  });
+  document.getElementById('summary-csv').addEventListener('click', ()=>{
+    const from = document.getElementById('summary-from').value;
+    const to = document.getElementById('summary-to').value;
+    downloadBlob(tableToCsvBlob(summaryExportColumns, summaryExportRows), `zvedennya-${from}_${to}.csv`);
+  });
+}
+
 renderHeader();
 renderList();
 renderDetail();
 initRings();
 initTrend();
 initSummary();
+initSummaryExport();
 initRangePicker('weekload', renderWeekLoad, 7);
 initRangePicker('shiftgrid', renderShiftGrid, 7);
 initRangePicker('nightday', renderNightDayBreakdown, 7);
+initSimReports();
 initTopNav();
 </script>
 </body>
