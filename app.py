@@ -80,6 +80,137 @@ SIMULATOR_DASHBOARD_ID = os.environ.get(
 SIMULATOR_NAME_ID = "78375144-5b27-45dc-90a2-21488d4c96b4"
 SIMULATOR_CURRENCY_ID = "11294777"
 
+# ---------------------------------------------------------------------------
+# Simulator-звіти для вкладки "Simulator-звіти" (ринки / AVIA-теми / мови /
+# тижнева таблиця) — ті самі дашборди, id/actorId стабільні (не змінюються
+# від місяця до місяця, змінюється лише SIMULATOR_TOKEN, який згасає).
+# Тягнуться НАЖИВО по запиту з фронтенду (/simulator-report), нічого з
+# цього не кешується і не впливає на regenerate()/основний дашборд.
+# ---------------------------------------------------------------------------
+SIMREP_NAME_ID = "231d5660-f2c3-47fd-8b69-8eb44d720f17"  # спільний для ринків/AVIA
+
+SIMREP_MARKETS_DASHBOARD = "cd59523d-b4b7-4e4e-87cf-496d68e619c6"
+SIMREP_MARKETS_EXCLUDE = {"tickets.ua", "tickets.kz"}  # рішення користувача
+SIMREP_MARKETS_LABELS = {
+    "kissandfly.com": "COM", "travelfrom.es": "ES", "kissandfly.de": "DE",
+    "mytickets.ae": "AE", "kissandfly.it": "IT", "travelfrom.fr": "FR",
+    "alrehlat.com": "Aerhlat", "tickets.pl": "PL", "mytickets.co.il": "Co.il",
+    "travelfrom.nl": "NL", "kissandfly.at": "AT", "kissandfly.ro": "RO",
+    "tickets.kg": "KG", "tickets.lt": "LT", "tickets.uz": "UZ",
+    "tickets.md": "MD", "tickets.az": "AZ", "tickets.ee": "EE",
+    "tickets.lv": "LV", "tickets.ge": "GE", "tickets.am": "AM",
+    "kissandfly.ng": "NG", "tickets.com.tr": "TR",
+}
+SIMREP_MARKETS_ACCOUNTS = [
+    ("c3161d38-cdaf-4e44-a400-500a6a12d912", "tickets.ua"),
+    ("5f48cbe3-d5e8-4123-8572-088e17c44fb8", "tickets.kz"),
+    ("a87a2e24-e856-4c29-a41f-72daf6351e02", "travelfrom.es"),
+    ("29dc34ca-1251-4271-878d-c8e03787015e", "travelfrom.fr"),
+    ("979e43e9-b4cc-449a-9418-b3e0c6f98189", "travelfrom.nl"),
+    ("92c722fe-0a68-4062-90d5-f83a4b5de0ea", "tickets.uz"),
+    ("2f7e4ad4-c423-4303-b927-2a97a22cb9e9", "tickets.pl"),
+    ("9f93b1a3-8382-45a2-8acd-d9ad8b327502", "alrehlat.com"),
+    ("9bbb203f-442e-4656-a3b9-2fac6d3375e0", "mytickets.co.il"),
+    ("3c8eabe9-1a02-4701-92a0-b7ebc11438ab", "kissandfly.ng"),
+    ("ff28c4c8-895e-470a-acf1-fa4e280d47fb", "tickets.lv"),
+    ("72c7e7f9-5343-4a3d-b8c1-90a4381393ae", "kissandfly.it"),
+    ("419c1077-b677-4969-9ae4-c58951508cc3", "tickets.ee"),
+    ("4a62f872-e5b7-4b95-9173-09a95176e98f", "tickets.az"),
+    ("0990a776-b3b0-4fab-8c5f-8cb4f818e1d3", "tickets.am"),
+    ("177c0b99-32fc-4190-ae47-d0e68297a44f", "tickets.com.tr"),
+    ("d5111653-a5b3-4f2f-9855-bec0b036cac7", "kissandfly.ro"),
+    ("f01dd7dc-a4b5-4b53-8d32-79e4ae67f4ea", "tickets.md"),
+    ("06107230-32bc-4167-980d-bcf2b4741009", "tickets.lt"),
+    ("fa43d533-8f14-4a1b-a1a7-e5666a813142", "tickets.kg"),
+    ("9fad0eee-9892-416b-bece-de8e3206a80d", "tickets.ge"),
+    ("68ca71a7-a3ec-4e95-ba69-b8c3f956d24e", "kissandfly.de"),
+    ("de79e338-a1ff-4fc6-807c-3de0f2c2ffd4", "kissandfly.at"),
+    ("150db01c-3cb4-4e16-9c50-fbbaeed96aef", "mytickets.ae"),
+    ("c9f36b21-f354-411b-9250-84be84a09eea", "kissandfly.com"),
+]
+
+SIMREP_AVIA_DASHBOARD = "6044dc45-c6fd-4dca-b1dd-605349252dd9"
+SIMREP_AVIA_ACCOUNTS = [
+    ("1d8a933f-d825-487b-a72d-04b7e17d7962", "AVIA|Онлайн check-in 1001"),
+    ("c1a0d59c-30c5-4ef8-9911-8cc33c41ebef", "AVIA|Терміни виписки квитка 1102"),
+    ("1ae5f4c2-9862-4f66-b6c4-16d4d097ff87", "AVIA|Повернення інструкція/терміни 1003"),
+    ("c5aa5deb-d577-4b12-a754-5eef514cf366", "AVIA|Інвол зміни/Очікування авторизації/відповіді АК/refund application 1007"),
+    ("562961a2-8b7f-4507-bb1a-e85dcb1e257c", "AVIA|Date change/обмін загальна інформація (як подати запит/правила тарифу/терміни) 1106"),
+    ("2c9cd215-ef4a-4351-bd71-66786edf28d1", "AVIA|Зміна данних пасажира 1002"),
+    ("d28221b3-d5c2-454b-bed8-259dfe9f27ed", "AVIA|Статус \"Анульовано\" неуспішна виписка/розблокування коштів  1101"),
+    ("407aa906-9e97-4ee5-83e7-f54997fa3405", "AVIA|Багаж оформити доп послугу 1206"),
+    ("8a27c346-b60d-4646-ba12-bf9b71d7a92f", "AVIA|Багаж норми/вага/габарити 1205"),
+    ("67fac00e-aaf9-41a1-99e5-69911c3fca2f", "AVIA|Загальна інформація по оплаті 1008"),
+    ("67ea83d0-a35d-4dfe-8582-4cd71358655e", "AVIA|Повторна відправка МК 1103"),
+    ("c8d68607-9c32-4244-9860-a0ba8e6069c8", "AVIA|Питають за повернення/затримка (заявка в жп) 1004"),
+    ("12abb0b1-af56-44b4-81d7-7322da9c5200", "AVIA|Технічні труднощі при оплаті 1009"),
+    ("08133bce-f0f4-41e2-a2b4-fe4217d6d7b8", "AVIA|Не коректний ПНР/не відкриває бронювання 1208"),
+    ("6c705fe3-14b2-4087-b674-ac3ac12499f5", "AVIA|Авторизація повернення|RA 1005"),
+    ("f7756dc4-7440-4d06-a471-bb906a2ae4ba", "AVIA|Місця оформити доп послугу 1109"),
+    ("d6e7bb76-ca57-4785-b2ad-4d4d20f31f14", "AVIA|Відправка МК для підтвердження замовлення 1107"),
+    ("af041edc-74c4-46ef-91d3-ea1d11ae579d", "AVIA|Документи для звітності/Інвойс 1204"),
+    ("9f26850f-8234-4279-9b72-868cf11f5664", "AVIA|SSR запит, тварини, лижі, спорядження 1203"),
+    ("338356a0-4e00-473d-a4b6-3dacfa389f64", "AVIA|Скарги/спірні питання/Чеки 1207"),
+    ("6619825d-c96a-4228-8804-d766006369cd", "AVIA|Альта клієнту до виписки 1211"),
+    ("dc4d83ed-9979-49a0-9daf-35b40156fd2b", "AVIA|АРН/Док про розблок 1209"),
+    ("d391e7e0-eecd-4df3-9c4e-390e4f2c1835", "AVIA|Документи для здійснення подорожі/Візи 1202"),
+    ("7b00ff54-992c-487e-bd7e-265f8f6c40c5", "AVIA|Не можемо оформити багаж 1213"),
+    ("279d7a0d-0267-40a0-bd2c-f5b207cd3b42", "AVIA|Оновлений PNR 1214"),
+    ("b07d32d3-760d-440f-b21f-f8e4942f25eb", "AVIA|Мильний/фродовий квиток (до вильоту) 1104"),
+    ("24ad5dda-7589-4f1f-8fdd-988496f99057", "AVIA|Запит реквізитів 1006"),
+    ("782ae41c-0db8-4e41-8a58-67db2724515d", "AVIA|Харчування/оформлення/наявність 1201"),
+    ("6bdec1ca-7fe4-4b9e-8286-f70b9d2cc813", "AVIA|Виставлення рахунку для юр/фіз осіб 1212"),
+    ("cf25b934-5c55-474b-9e2b-c60b33384dff", "AVIA|Зміна електронної адреси "),
+]
+
+SIMREP_LANG_DASHBOARD = "f63a133b-cf0b-4c43-9477-81773fefda25"
+SIMREP_LANG_NAME_ID = "d8616859-65d1-4713-aedf-04d72c1856ab"
+SIMREP_LANG_ACTOR_IDS = [
+    "309a48d3-1ade-479b-984a-f72fec912b08", "bb377918-c3f8-4690-ac96-c06c75b7cdd5",
+    "1ea39940-41cd-4455-a92a-aafd43ed87be", "808f866a-0086-465d-912f-da3de4120f62",
+    "dafa4aaf-fdc9-441b-9278-8e77db1606d8", "a516574e-ad19-437b-8109-3c16c663a26e",
+    "2b05e6a0-7a3f-4e71-a53e-aa291e8eed9c", "bdd1eacb-d740-48e1-970c-211314985f0c",
+    "307f998c-e034-47f0-8cf1-a8c564f40c6e", "2269e4c1-c7f6-4b17-8d3c-fb1e6335ec81",
+    "3b0f17c4-3304-4a4d-a2c5-2e546af952e6", "82b334ab-03d6-440e-9edf-5cb4b0a4fce7",
+    "441c0ff0-270d-4ff3-a637-eea60c43585a", "2075c1d9-5f8b-4f25-9a33-ae647805d830",
+    "891237f1-0b9e-495e-9a05-d71b1ee0bcf4", "a64001ef-e88d-4826-bb40-f65721ca08de",
+    "0ea18f7e-06f7-4b52-b9b2-1c14c7c236a0", "3d5fa811-8f0c-408c-9381-eaf3b7846c1c",
+    "d06f34a9-82da-4ce3-8f3f-973ae0b51e3f", "49859915-dab2-4543-877b-f79c3aae576b",
+    "ca995139-4c9f-4d00-a329-f3e66ead2906", "05ec32cc-a5f9-410f-999c-c9b2bb6b9987",
+    "ea9b4c4a-6266-4724-82c7-e6b0f56ed9ae", "3e8c5ba2-e4ef-4350-9d1b-0ffc018532d5",
+    "f168f7ad-4aed-497f-bec1-1ef7e9b9f22e", "eeb3d0bd-08c2-43c0-afd2-ddfeff269eb7",
+    "329ab56b-82f3-4535-bd7d-eacdd02f9275", "e9c798d6-a487-4d2d-b45c-525867978429",
+    "904e66c3-26b3-4c8a-9693-f9bbd571c88d", "86b2f37a-eef2-4261-8a8c-209cbc1495f5",
+    "85238a98-e09e-4c4f-b0b3-029e509b5872", "64986229-963d-428f-9fda-95576b7f6ec6",
+    "4f1abd01-a9e9-490c-b2f0-5547d8b4afef", "4e4b1d11-e2d0-4ec7-b34e-451edc20b5a7",
+    "3feb5275-acb5-4469-8bb8-8e4f4d66364b", "3e67f5b6-1de4-4352-ac68-f6a93e5ff919",
+    "3375c753-cde3-44b6-8e5c-4ac583f6068d", "111286cf-93a9-456b-befd-48a8b8940c02",
+    "a05984c3-9659-4572-846b-3ead14bc4c41",
+]
+
+# тижнева таблиця "Поступило/Відповіли/AI chats" — формула вивірена на
+# серпні 2026: місячна сума Поступило (35679) й AI chats (19384) зійшлись
+# з ручною табличкою користувача день-в-день з точністю ±3-9/день (межа
+# доби на стику дат — на місячну суму не впливає).
+SIMREP_WEEKLY_NAME_ID = "d0050cbd-1347-446d-90be-930ceee6431a"
+SIMREP_INTERNATIONAL_TEAM_ID = "8f6fb408-242f-4067-b81f-ae199cd9196e"
+SIMREP_WEEKLY_AI_GROUPS_DASHBOARD = "ce936289-c098-4e43-8141-53f1d1194f2e"
+SIMREP_WEEKLY_AI_EMPLOYEES_DASHBOARD = "2efc1f46-2519-4de6-9f92-be2da2b8408c"
+SIMREP_WEEKLY_MISSED_DASHBOARD = "b0a5bce2-d9d0-4010-a24c-5b5640bf74ac"
+SIMREP_WEEKLY_MISSED_NAME_ID = "b12f1f93-fc5d-4033-99bc-4f35bd7e14ce"
+SIMREP_WEEKLY_EMPLOYEES = [
+    "d2bdeb5a-a769-49b6-a041-51509ac60d9e", "96f8f983-976d-4e6b-b551-157ab044abac",
+    "caf82891-abdf-4078-9d97-7ff6f5bd6f29", "b5a17dd7-9aad-409c-9714-4a1f4e7e0d68",
+    "46309104-eb31-4cf2-ba4d-3040c7e03010", "181ef978-1138-42ac-a874-da8f6590da0d",
+    "fe72fd82-d62b-4074-826b-be146165a3c7", "24d54cb7-41d3-475c-af96-b93db683a055",
+    "723d135b-c42f-4a8b-8aca-7e3769b3a013", "0f90d20a-8699-41e5-9084-e6a27b19e92b",
+    "cb96c123-a267-4705-abae-cddabcb0a7b9", "51f99f07-4e40-4dc4-ac2b-51a7d3bd382e",
+    "e905307e-483a-4a04-a8bd-6511ca707f2b", "7c6f0122-5d9a-4c9f-b46c-50c44b9cb9a3",
+    "d04a30b7-5817-498c-b4db-6bf251bc656a", "47f015eb-252c-4af1-9d9c-740c2929e581",
+    "3123465e-57bd-435b-81a0-8847e8496fb3",
+]
+SIMREP_DAYS_UA = ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя"]
+
 PORT = int(os.environ.get("PORT", "8080"))
 TZ = ZoneInfo("Europe/Kyiv")
 
@@ -512,6 +643,168 @@ def fetch_chats_for_date(date_str):
 
 
 # ---------------------------------------------------------------------------
+# Simulator-звіти для вкладки "Simulator-звіти" (ринки / AVIA-теми / мови /
+# тижнева таблиця). Тягнуться НАЖИВО по HTTP GET /simulator-report — окремий
+# період на кожен виклик, нічого не кешується і не чіпає ticket_cache/
+# chats_cache основного дашборду.
+# ---------------------------------------------------------------------------
+
+def _simrep_params(from_date, to_date):
+    d0 = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=TZ)
+    d1 = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=TZ)
+    return {
+        "from": str(int(d0.timestamp() * 1000)),
+        "to": str(int(d1.timestamp() * 1000)),
+        "interval": "day",
+        "timezoneOffset": "-180",
+    }
+
+
+def _simrep_post(dashboard_id, body, from_date, to_date):
+    if not SIMULATOR_TOKEN:
+        raise RuntimeError("SIMULATOR_TOKEN не задано")
+    r = requests.post(
+        f"{SIMULATOR_BASE}/api/1.0/dashboards/{dashboard_id}",
+        params=_simrep_params(from_date, to_date),
+        headers={"Authorization": f"Bearer {SIMULATOR_TOKEN}", "Content-Type": "application/json"},
+        json=body,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()["data"]
+
+
+def _simrep_by_day(series):
+    return {pt["date"][:10]: pt["value"] for pt in series.get("data", [])}
+
+
+def fetch_markets_report(from_date, to_date):
+    accounts = [
+        {"actorId": aid, "account": None, "nameId": SIMREP_NAME_ID, "currencyId": SIMULATOR_CURRENCY_ID,
+         "actor": {"id": aid, "title": title}, "incomeType": "total"}
+        for aid, title in SIMREP_MARKETS_ACCOUNTS
+    ]
+    body = {"source": {"accounts": accounts, "counterType": "count", "chartType": "stackedBar",
+                        "chartViewMode": "default"}}
+    data = _simrep_post(SIMREP_MARKETS_DASHBOARD, body, from_date, to_date)
+
+    rows = []
+    for series in data:
+        title = series["actorTitle"]
+        if title in SIMREP_MARKETS_EXCLUDE:
+            continue
+        total = sum(pt["value"] for pt in series.get("data", []))
+        rows.append((SIMREP_MARKETS_LABELS.get(title, title), total))
+    rows.sort(key=lambda r: -r[1])
+    return {"columns": ["Ринок", "Кількість"], "rows": [list(r) for r in rows], "total": sum(v for _, v in rows)}
+
+
+def fetch_avia_report(from_date, to_date):
+    accounts = [
+        {"actorId": aid, "account": {}, "nameId": SIMREP_NAME_ID, "currencyId": SIMULATOR_CURRENCY_ID,
+         "actor": {"id": aid, "title": title}, "accountType": "fact", "incomeType": "total"}
+        for aid, title in SIMREP_AVIA_ACCOUNTS
+    ]
+    body = {"source": {"accounts": accounts, "counterType": "amount", "chartType": "bar"}}
+    data = _simrep_post(SIMREP_AVIA_DASHBOARD, body, from_date, to_date)
+
+    rows = sorted(((d["actorTitle"], d["value"]) for d in data), key=lambda x: -x[1])
+    return {"columns": ["Тема", "Кількість"], "rows": [list(r) for r in rows], "total": sum(v for _, v in rows)}
+
+
+def fetch_languages_report(from_date, to_date):
+    accounts = [
+        {"actorId": aid, "incomeType": "total", "currencyId": SIMULATOR_CURRENCY_ID, "nameId": SIMREP_LANG_NAME_ID}
+        for aid in SIMREP_LANG_ACTOR_IDS
+    ]
+    body = {"source": {"accounts": accounts, "counterType": "amount", "chartType": "bar"}}
+    data = _simrep_post(SIMREP_LANG_DASHBOARD, body, from_date, to_date)
+
+    rows = sorted(((d.get("actorTitle", d["actorId"]), d["value"]) for d in data), key=lambda x: -x[1])
+    return {"columns": ["Мова", "Кількість"], "rows": [list(r) for r in rows], "total": sum(v for _, v in rows)}
+
+
+def fetch_weekly_table_report(from_date, to_date):
+    body_groups = {"source": {"accounts": [
+        {"actorId": SIMREP_INTERNATIONAL_TEAM_ID, "account": None, "nameId": SIMREP_WEEKLY_NAME_ID,
+         "currencyId": SIMULATOR_CURRENCY_ID, "actor": {"id": SIMREP_INTERNATIONAL_TEAM_ID, "title": "International team"},
+         "incomeType": "total"},
+    ], "counterType": "amount", "chartType": "stackedBar", "chartViewMode": "default"}}
+    data_groups = _simrep_post(SIMREP_WEEKLY_AI_GROUPS_DASHBOARD, body_groups, from_date, to_date)
+    postuplilo = {}
+    for series in data_groups:
+        if series["actorTitle"] == "International team":
+            postuplilo = _simrep_by_day(series)
+
+    accounts_emp = [
+        {"actorId": aid, "account": {}, "nameId": SIMREP_WEEKLY_NAME_ID, "currencyId": SIMULATOR_CURRENCY_ID,
+         "actor": {"id": aid, "title": aid}, "accountType": "fact", "incomeType": "total"}
+        for aid in SIMREP_WEEKLY_EMPLOYEES
+    ]
+    body_emp = {"source": {"accounts": accounts_emp, "counterType": "amount", "chartType": "stackedBar",
+                            "chartViewMode": "default"}}
+    data_emp = _simrep_post(SIMREP_WEEKLY_AI_EMPLOYEES_DASHBOARD, body_emp, from_date, to_date)
+    escalated = {}
+    for series in data_emp:
+        for k, v in _simrep_by_day(series).items():
+            escalated[k] = escalated.get(k, 0) + v
+
+    body_missed = {"source": {"accounts": [
+        {"actorId": SIMREP_INTERNATIONAL_TEAM_ID,
+         "account": {"nameId": SIMREP_WEEKLY_MISSED_NAME_ID, "currencyId": 11294777, "accountName": "Missed chats",
+                     "currencyName": "count", "currencyPrecision": 0, "currencyType": "number", "currencySymbol": ""},
+         "nameId": SIMREP_WEEKLY_MISSED_NAME_ID, "currencyId": 11294777,
+         "actor": {"id": SIMREP_INTERNATIONAL_TEAM_ID, "title": "International team"}, "incomeType": "total"},
+    ], "counterType": "amount", "chartType": "stackedBar", "chartViewMode": "default"}}
+    data_missed = _simrep_post(SIMREP_WEEKLY_MISSED_DASHBOARD, body_missed, from_date, to_date)
+    missed = _simrep_by_day(data_missed[0]) if data_missed else {}
+
+    d0 = date.fromisoformat(from_date)
+    d1 = date.fromisoformat(to_date)
+    days = [d0 + timedelta(days=i) for i in range((d1 - d0).days + 1)]
+
+    rows = []
+    tot_p = tot_m = tot_ai = tot_v = 0
+    for d in days:
+        key = d.isoformat()
+        p = postuplilo.get(key, 0)
+        m = missed.get(key, 0)
+        e = escalated.get(key, 0)
+        ai = p - e
+        v = e - m
+        pct_ne = (m / p) if p else 0
+        pct_v = 1 - pct_ne
+        pct_ai = (ai / p) if p else 0
+        tot_p += p; tot_m += m; tot_ai += ai; tot_v += v
+        rows.append([
+            d.strftime("%d.%m.%y"), SIMREP_DAYS_UA[d.weekday()],
+            f"{pct_v*100:.2f}%", f"{pct_ne*100:.2f}%", p, v, m, ai, f"{pct_ai*100:.2f}%",
+        ])
+
+    pct_ne_tot = (tot_m / tot_p) if tot_p else 0
+    pct_ai_tot = (tot_ai / tot_p) if tot_p else 0
+    rows.append([
+        "Разом", "", f"{(1-pct_ne_tot)*100:.2f}%", f"{pct_ne_tot*100:.2f}%",
+        tot_p, tot_v, tot_m, tot_ai, f"{pct_ai_tot*100:.2f}%",
+    ])
+
+    return {
+        "columns": ["Дата", "День", "% Відповіли", "% Не відповіли", "Поступило", "Відповіли", "Не відповіли",
+                    "AI chats", "Трафік забраний AI"],
+        "rows": rows,
+        "total": tot_p,
+    }
+
+
+SIMREP_FETCHERS = {
+    "markets": fetch_markets_report,
+    "avia": fetch_avia_report,
+    "languages": fetch_languages_report,
+    "weekly": fetch_weekly_table_report,
+}
+
+
+# ---------------------------------------------------------------------------
 # Кеш на диску
 # ---------------------------------------------------------------------------
 
@@ -750,10 +1043,14 @@ class Handler(BaseHTTPRequestHandler):
         pass  # не засмічуємо логи запитами до health-чеку
 
     def do_GET(self):
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
+            return
+        if parsed.path == "/simulator-report":
+            self._simulator_report(parsed)
             return
         if os.path.exists(OUTPUT_PATH):
             with open(OUTPUT_PATH, "rb") as f:
@@ -767,6 +1064,42 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(503)
             self.end_headers()
             self.wfile.write(b"dashboard is not generated yet, first refresh still running")
+
+    def _json(self, status, payload):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
+
+    def _simulator_report(self, parsed):
+        # GET /simulator-report?kind=markets|avia|languages|weekly&from=YYYY-MM-DD&to=YYYY-MM-DD
+        # Наживо, без кешу — окрема вкладка "Simulator-звіти", не чіпає
+        # regenerate()/основний дашборд.
+        qs = parse_qs(parsed.query)
+        kind = qs.get("kind", [None])[0]
+        frm = qs.get("from", [None])[0]
+        to = qs.get("to", [None])[0]
+        if not kind or not frm or not to:
+            self._json(400, {"error": "потрібно kind, from, to (YYYY-MM-DD)"})
+            return
+        fn = SIMREP_FETCHERS.get(kind)
+        if not fn:
+            self._json(400, {"error": f"невідомий kind: {kind}"})
+            return
+        if not SIMULATOR_TOKEN:
+            self._json(503, {"error": "SIMULATOR_TOKEN не задано на сервері"})
+            return
+        try:
+            result = fn(frm, to)
+        except requests.HTTPError as e:
+            self._json(502, {"error": f"Simulator API помилка (можливо, протух SIMULATOR_TOKEN — онови в Rancher secret): {e}"})
+            return
+        except Exception:
+            traceback.print_exc()
+            self._json(500, {"error": "внутрішня помилка сервера, дивись логи"})
+            return
+        self._json(200, result)
 
     def do_POST(self):
         parsed = urlparse(self.path)
