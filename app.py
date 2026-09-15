@@ -759,6 +759,24 @@ def fetch_weekly_table_report(from_date, to_date):
     data_missed = _simrep_post(SIMREP_WEEKLY_MISSED_DASHBOARD, body_missed, from_date, to_date)
     missed = _simrep_by_day(data_missed[0]) if data_missed else {}
 
+    # "Відповіли" — НЕ похідна (escalated-missed), а пряма сума чатів по
+    # всіх агентах з того самого дашборду, що вже живить колонку "Чат" на
+    # головній сторінці (SIMULATOR_DASHBOARD_ID/SIMULATOR_ACTORS) — так
+    # хотіла користувачка, перевірено день-в-день з її ручною таблицею
+    # (1.08: 424 — збіглось точно).
+    accounts_answered = [
+        {"actorId": aid, "account": {}, "nameId": SIMULATOR_NAME_ID, "currencyId": SIMULATOR_CURRENCY_ID,
+         "actor": {"id": aid, "title": title}, "accountType": "fact", "incomeType": "total"}
+        for aid, title in SIMULATOR_ACTORS.values()
+    ]
+    body_answered = {"source": {"accounts": accounts_answered, "counterType": "amount", "chartType": "stackedBar",
+                                 "chartViewMode": "default"}}
+    data_answered = _simrep_post(SIMULATOR_DASHBOARD_ID, body_answered, from_date, to_date)
+    answered = {}
+    for series in data_answered:
+        for k, v in _simrep_by_day(series).items():
+            answered[k] = answered.get(k, 0) + v
+
     d0 = date.fromisoformat(from_date)
     d1 = date.fromisoformat(to_date)
     days = [d0 + timedelta(days=i) for i in range((d1 - d0).days + 1)]
@@ -771,7 +789,7 @@ def fetch_weekly_table_report(from_date, to_date):
         m = missed.get(key, 0)
         e = escalated.get(key, 0)
         ai = p - e
-        v = e - m
+        v = answered.get(key, 0)
         pct_ne = (m / p) if p else 0
         pct_v = 1 - pct_ne
         pct_ai = (ai / p) if p else 0

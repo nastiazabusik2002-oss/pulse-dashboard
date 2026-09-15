@@ -281,6 +281,13 @@
   .rating-budget-note{margin-top:.7rem; font-size:.76rem; color:var(--ink-faint);}
   .rating-budget-note.warn{color:var(--sh-senior);}
 
+  /* ---- Вартість чата (калькулятор у "Зведення за період") ---- */
+  .cost-calc{margin-top:1.3rem; padding-top:1.1rem; border-top:1px solid var(--line);}
+  .cost-calc h3{font-size:.82rem; font-weight:700; color:var(--ink-soft); margin:0 0 .3rem;}
+  .cost-calc-input{display:flex; align-items:center; gap:.6rem; margin-bottom:.2rem; flex-wrap:wrap;}
+  .cost-calc-input label{font-family:var(--font-mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);}
+  .cost-calc-input input[type=number]{font-family:var(--font-mono); font-size:.95rem; font-weight:600; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:.45rem .65rem; color:var(--ink); width:140px; color-scheme:light dark;}
+
   /* ---- Simulator-звіти (ринки / AVIA-теми / мови / тижнева таблиця) ---- */
   .simrep-kinds{display:flex; gap:.5rem; flex-wrap:wrap; margin:0 0 1rem;}
   .simrep-actions, .table-actions{display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;}
@@ -522,6 +529,33 @@
       </div>
       <p class="range-note" id="summary-note">Листи — фактичні артиклі за обраний період, звичайні листи + фідбек разом. Чати — реальні дані з Simulator. Закрито загалом = Листи + Чати. Рейт — фіксоване меню сум (305 макс. Носаль, далі 350…105 ₴) розподіляється по рангу за "Ср.закрито загалом" — вище показник, більша сума з меню; суму можна відредагувати вручну.</p>
       <p class="rating-budget-note" id="rating-budget-note"></p>
+
+      <div class="cost-calc" id="cost-calc">
+        <h3>Вартість чата — за обраний вище період</h3>
+        <p class="section-desc" style="margin:0 0 .9rem; text-align:left;">Змін-чатів і чатів рахуються автоматично з таблиці вище (усі зміни "Чати"+"Нічна" по всій команді). Середня вартість зміни змінюється щомісяця — впиши вручну, вона запам'ятається в цьому браузері.</p>
+        <div class="cost-calc-input">
+          <label for="shift-cost-input">Середня вартість зміни (₴)</label>
+          <input type="number" id="shift-cost-input" min="0" step="1" placeholder="напр. 1034">
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="v" id="cc-shifts">—</div>
+            <div class="l">Змін-чатів (Чати+Нічна)</div>
+          </div>
+          <div class="stat">
+            <div class="v" id="cc-chats">—</div>
+            <div class="l">Чатів</div>
+          </div>
+          <div class="stat">
+            <div class="v" id="cc-total">—</div>
+            <div class="l">Загальна вартість</div>
+          </div>
+          <div class="stat">
+            <div class="v" id="cc-per-chat">—</div>
+            <div class="l">Вартість одного чата</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1160,6 +1194,8 @@ function renderSummaryTable(){
 
   document.getElementById('summary-span').textContent = `${fmtDateShort(from)} – ${fmtDateShort(to)} · ${datesBetween(from,to).length} дн.`;
 
+  renderCostCalc(totals.chatShifts, totals.chatz);
+
   document.querySelectorAll('#summary-table thead th[data-key]').forEach(th=>{
     th.classList.toggle('sorted', th.dataset.key===summarySortKey);
     th.querySelector('.arrow')?.remove();
@@ -1460,6 +1496,44 @@ function loadRatingOverrides(){
 }
 function saveRatingOverrides(all){
   localStorage.setItem(RATING_OVERRIDES_KEY, JSON.stringify(all));
+}
+
+// ---------------------------------------------------------------------------
+// Вартість чата — Змін-чатів і Чатів беремо з уже порахованих totals у
+// renderSummaryTable() (та сама таблиця "Зведення за період"), середню
+// вартість зміни користувачка вводить сама (змінюється щомісяця) — лишається
+// в цьому браузері між сесіями, поки не перепише.
+// ---------------------------------------------------------------------------
+const SHIFT_COST_KEY = 'pulse_shift_cost_v1';
+
+function loadShiftCost(){
+  const v = localStorage.getItem(SHIFT_COST_KEY);
+  return v === null ? '' : v;
+}
+function saveShiftCost(v){
+  localStorage.setItem(SHIFT_COST_KEY, v);
+}
+
+function renderCostCalc(chatShifts, chats){
+  lastSummaryChatShifts = chatShifts; lastSummaryChatz = chats;
+  document.getElementById('cc-shifts').textContent = chatShifts.toLocaleString('uk-UA');
+  document.getElementById('cc-chats').textContent = chats.toLocaleString('uk-UA');
+  const cost = Number(document.getElementById('shift-cost-input').value) || 0;
+  const total = chatShifts * cost;
+  const perChat = chats > 0 ? total / chats : null;
+  document.getElementById('cc-total').textContent = cost > 0 ? `${Math.round(total).toLocaleString('uk-UA')} ₴` : '—';
+  document.getElementById('cc-per-chat').textContent = (cost > 0 && perChat !== null) ? `${perChat.toFixed(2)} ₴` : '—';
+}
+
+let lastSummaryChatShifts = 0, lastSummaryChatz = 0;
+
+function initCostCalc(){
+  const input = document.getElementById('shift-cost-input');
+  input.value = loadShiftCost();
+  input.addEventListener('input', ()=>{
+    saveShiftCost(input.value);
+    renderCostCalc(lastSummaryChatShifts, lastSummaryChatz);
+  });
 }
 function ratingPeriodKey(from, to){ return `${from}_${to}`; }
 
@@ -1843,6 +1917,7 @@ renderList();
 renderDetail();
 initRings();
 initTrend();
+initCostCalc();
 initSummary();
 initSummaryExport();
 initRangePicker('weekload', renderWeekLoad, 7);
