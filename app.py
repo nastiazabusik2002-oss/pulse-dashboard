@@ -261,6 +261,8 @@ TEAM = [
     {"email": "t.shvets@ttn.global", "id": 118, "name": "Таня Швець"},
     {"email": "n.krapivnoy@ttn.global", "id": 11, "name": "Нікіта Крапівной"},
     {"email": "o.radziminskyi@ttn.global", "id": 128, "name": "Саша Радзімінський"},
+    {"email": "o.mikus@ttn.global", "id": 141, "name": "Оля Мікус"},
+    {"email": "m.alieksandruk@ttn.global", "id": 142, "name": "Марта Алєксандрук"},
 ]
 
 # email -> (actorId, title) в Simulator.company — зіставлено вручну по іменах
@@ -281,6 +283,8 @@ SIMULATOR_ACTORS = {
     "t.shvets@ttn.global": ("d04a30b7-5817-498c-b4db-6bf251bc656a", "Tetiana Shvets"),
     "n.krapivnoy@ttn.global": ("46309104-eb31-4cf2-ba4d-3040c7e03010", "Nikita Krapivnoy"),
     "o.radziminskyi@ttn.global": ("3123465e-57bd-435b-81a0-8847e8496fb3", "Radziminskyi Oleksandr"),
+    "o.mikus@ttn.global": ("87db1320-0d65-4379-9086-ed8ffd719e9d", "Olha Mikus"),
+    "m.alieksandruk@ttn.global": ("8c818aac-b905-4dde-a000-c56cd57c7452", "Marta Alieksandruk"),
 }
 
 # ---------------------------------------------------------------------------
