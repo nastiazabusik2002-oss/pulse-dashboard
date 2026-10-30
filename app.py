@@ -395,27 +395,71 @@ def _ticket_category(t, tags):
 
 
 def _chat_events(tid, t):
-    """Один тикет чату = кілька «розмов»: клієнт пише знову → тикет
-    переоткривається, Zammad скидає власника й пріоритет, AI знову передає
-    людині. Тому рахуємо не тикети, а події з історії:
-      esc    — пріоритет піднято до «3 high» (AI передав чат людині)
-      reopen — закритий тикет знову відкрито (нова розмова)
-      close  — тикет закрито"""
+    """Дані тикета чату для розбивки на розмови: сирі події state/priority з
+    історії (у хронологічному порядку), сайт і причина звернення."""
     hist = zammad_get(f"/ticket_history/{tid}").get("history", [])
-    ev = {"esc": [], "reopen": [], "close": []}
-    for h in hist:
-        attr, frm, to, at = h.get("attribute"), (h.get("value_from") or ""), (h.get("value_to") or ""), h.get("created_at")
-        if attr == "priority" and to.startswith("3"):
-            ev["esc"].append(at)
-        elif attr == "state" and to == "closed":
-            ev["close"].append(at)
-        elif attr == "state" and frm in ("closed", "merged") and to in ("open", "new"):
-            ev["reopen"].append(at)
+    ev = sorted(
+        ([h.get("created_at"), h.get("id") or 0, h.get("attribute"), h.get("value_from") or "", h.get("value_to") or ""]
+         for h in hist if h.get("attribute") in ("state", "priority") and h.get("created_at")),
+        key=lambda x: (x[0], x[1]))
     title = t.get("title") or ""
     site = re.sub(r"^Chat\s*[–-]\s*", "", title).strip().lower()
     site = re.sub(r"^(my|www)\.", "", site)
-    return {"created_at": t.get("created_at"), "site": site,
-            "reason": t.get("contact_reason_tree") or "", **ev}
+    return {"v": 2, "created_at": t.get("created_at"), "site": site,
+            "reason": t.get("contact_reason_tree") or "", "events": ev}
+
+
+def _ts(iso):
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+def chat_conversations(entry, now_ts):
+    """Розмови одного тикета чату — та сама логіка, що в дашборді UA Support Ops
+    (колишній Simulator). Повертає [(день, вид, [created_by живих агентів])]:
+      • розмова = від створення / переоткриття до закриття (+5 с: відповідь і
+        закриття часто зберігаються одним кліком);
+      • рахується лише розмова, де клієнт щось написав; день — за першим
+        повідомленням клієнта (Київ);
+      • вид: answered — відповів живий агент; ai — лише бот і людині не
+        передавали (пріоритет не «3»); missed — людина не відповіла, а розмову
+        закрили або клієнт чекає понад 2 год (інакше поки не рахуємо)."""
+    ch = entry["chat"]
+    arts = [(_ts(a["created_at"]), a) for a in entry["articles"] if a.get("created_at")]
+    out = []
+    st = {"start": _ts(ch["created_at"]) - 1, "prio": "2", "closed": False}
+
+    def episode(end, is_open):
+        ep = [(at, a) for at, a in arts if st["start"] < at <= end + 5]
+        cust = [at for at, a in ep if a.get("sender") == "Customer" and a.get("internal") is False]
+        if not cust:
+            return
+        agents = [a for _, a in ep if a.get("sender") == "Agent" and a.get("internal") is False and a.get("created_by")]
+        writers = list(dict.fromkeys(a["created_by"] for a in agents if not BOT_LOGIN_RE.search(a["created_by"])))
+        bot = any(BOT_LOGIN_RE.search(a["created_by"]) for a in agents)
+        d = datetime.fromtimestamp(cust[0], TZ).date().isoformat()
+        if writers:
+            kind = "answered"
+        elif bot and not st["prio"].startswith("3"):
+            kind = "ai"
+        elif not is_open or end - cust[-1] > 2 * 3600:
+            kind = "missed"
+        else:
+            return  # клієнт ще чекає — поки не рахуємо
+        out.append((d, kind, writers))
+
+    for at, _id, attr, frm, to in ch["events"]:
+        t = _ts(at)
+        if attr == "priority":
+            st["prio"] = to
+            continue
+        if to == "closed" and frm != "closed":
+            episode(t, False)
+            st["closed"] = True
+        if frm == "closed" and to != "closed":
+            st["start"], st["closed"] = t - 1, False   # переоткриття — нова розмова
+    if not st["closed"]:
+        episode(now_ts, True)
+    return out
 
 
 def discover_and_cache_tickets(anchor_date, yesterday):
@@ -443,7 +487,7 @@ def discover_and_cache_tickets(anchor_date, yesterday):
         # чати, закешовані до появи підрахунку розмов, — перечитуємо один раз:
         # старий кеш не мав історії розмов і позначки internal, а my.tickets.ua
         # тоді теж ішов як "chat". Після перечитування умова більше не спрацьовує.
-        return e.get("cat") == "chat" and "chat" not in e
+        return e.get("cat") == "chat" and (e.get("chat") or {}).get("v") != 2
 
     to_refresh = [(tid, t) for tid, t in tickets.items() if _stale(tid, t)]
     print(f"[refresh] тікетів на (пере)фетч: {len(to_refresh)} з {len(tickets)}")
@@ -504,7 +548,7 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
     result = {
         d: {
             email: {"listy": 0, "feedback": 0, "chat": 0, "dept": 0, "notes": 0, "touches": 0, "tickets": set(),
-                    "chat_t": set()}
+                    "chat_n": 0}
             for email in zammad_users
         }
         for d in precise_days
@@ -533,12 +577,9 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
             atype = a.get("type")
             if atype == "phone":
                 continue
-            # Чат: рахуємо ЧАТИ (тикети), а не повідомлення — як у Simulator.
-            # У чатах агенти відповідають і листом, і публічною нотаткою.
+            # Чати рахуються нижче — по розмовах, а не по статтях
             if cat == "chat":
-                if atype != "note" or a.get("internal") is False:
-                    r["chat_t"].add(tid)
-                elif atype == "note":
+                if atype == "note" and a.get("internal") is not False:
                     r["notes"] += 1
                 continue
             if cat == "chat_ua":
@@ -550,12 +591,26 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
                 continue
             r[cat] += 1
 
+    # «Чат» агента = кількість розмов (за днем першого повідомлення клієнта),
+    # у яких він відповідав — як у Simulator і в дашборді UA Support Ops
+    now_ts = time.time()
+    for entry in ticket_cache.values():
+        if entry.get("cat") != "chat" or (entry.get("chat") or {}).get("v") != 2:
+            continue
+        for d, kind, writers in chat_conversations(entry, now_ts):
+            if d not in days_set or kind != "answered":
+                continue
+            for w in writers:
+                email = login_to_email.get(w)
+                if email:
+                    result[d][email]["chat_n"] += 1
+
     return {
         d: {
             email: {
                 "listy": r["listy"],
                 "feedback": r["feedback"],
-                "chatz": len(r["chat_t"]),
+                "chatz": r["chat_n"],
                 "dept": r["dept"],
                 "notes": r["notes"],
                 "touches": r["touches"],
@@ -571,50 +626,33 @@ def _kyiv_day(iso):
     return _article_kyiv_date(iso) if iso else None
 
 
-def compute_zammad_chat_daily(ticket_cache, precise_cache, days):
-    """Поденні підсумки чатів із Zammad (для тижневої таблиці й звітів):
-      incoming  — нових розмов: створення тикета + кожне переоткриття
-      escalated — AI передав людині (пріоритет → 3)
-      missed    — передали людині, але живий агент не відповів до закриття
-      answered  — сума по агентах команди: у скількох чатах кожен відповів
-      markets   — нові розмови за сайтом; avia — закриті чати за AVIA-причиною"""
+def compute_zammad_chat_daily(ticket_cache, zammad_users, days):
+    """Поденні підсумки чатів із Zammad (тижнева таблиця й звіти), з розмов
+    (chat_conversations). Кожна розмова — рівно в одній категорії:
+      answered — відповів хтось із команди (спільна розмова — один раз)
+      ai       — відповідав лише бот, людині не передавали
+      missed   — людина не відповіла
+      incoming — answered + ai + missed
+    markets / avia — ті самі розмови за сайтом і AVIA-причиною."""
+    team = {zu["login"] for zu in zammad_users.values()}
     days_set = set(days)
-    out = {d: {"incoming": 0, "escalated": 0, "missed": 0, "answered": 0, "markets": {}, "avia": {}} for d in days}
-    now_iso = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out = {d: {"incoming": 0, "answered": 0, "ai": 0, "missed": 0, "markets": {}, "avia": {}} for d in days}
+    now_ts = time.time()
     for entry in ticket_cache.values():
-        ch = entry.get("chat")
-        if entry.get("cat") != "chat" or not ch:
+        if entry.get("cat") != "chat" or (entry.get("chat") or {}).get("v") != 2:
             continue
-        # «Живі» відповіді агентів (не бот, не внутрішні нотатки)
-        human = sorted(a["created_at"] for a in entry["articles"]
-                       if a.get("sender") == "Agent" and a.get("created_at")
-                       and not BOT_LOGIN_RE.search(a.get("created_by") or "")
-                       and a.get("type") != "phone" and not (a.get("type") == "note" and a.get("internal") is not False))
-        for start in [ch.get("created_at")] + ch.get("reopen", []):
-            d = _kyiv_day(start)
-            if d in days_set:
-                out[d]["incoming"] += 1
-                out[d]["markets"][ch["site"]] = out[d]["markets"].get(ch["site"], 0) + 1
-        closes = sorted(ch.get("close", []))
-        for e in ch.get("esc", []):
-            d = _kyiv_day(e)
+        ch = entry["chat"]
+        for d, kind, writers in chat_conversations(entry, now_ts):
             if d not in days_set:
                 continue
-            out[d]["escalated"] += 1
-            end = next((c for c in closes if c > e), None)
-            replied = any(e < h <= (end or now_iso) for h in human)
-            # ще відкрита розмова без відповіді рахується як пропущена лише через 2 год
-            stale = end or (datetime.fromisoformat(e.replace("Z", "+00:00")) < datetime.now(ZoneInfo("UTC")) - timedelta(hours=2))
-            if not replied and stale:
-                out[d]["missed"] += 1
-        reason = ch.get("reason") or ""
-        if reason.startswith("AVIA|"):
-            for c in closes:
-                d = _kyiv_day(c)
-                if d in days_set:
-                    out[d]["avia"][reason] = out[d]["avia"].get(reason, 0) + 1
-    for d in days:
-        out[d]["answered"] = sum(v.get("chatz", 0) for v in precise_cache.get(d, {}).values())
+            if kind == "answered" and not any(w in team for w in writers):
+                continue  # відповідав хтось не з команди — не наша розмова
+            o = out[d]
+            o[kind] += 1
+            o["incoming"] += 1
+            o["markets"][ch["site"]] = o["markets"].get(ch["site"], 0) + 1
+            if ch["reason"].startswith("AVIA|"):
+                o["avia"][ch["reason"]] = o["avia"].get(ch["reason"], 0) + 1
     return out
 
 
@@ -623,11 +661,8 @@ def update_zammad_chat_daily(ticket_cache, zammad_users, precise_cache, precise_
     щоб звіти за старі місяці працювали й після того, як тикети випадуть з кешу."""
     today = datetime.now(TZ).date().isoformat()
     days = list(precise_days) + [today]
-    pc = dict(precise_cache)
-    if today in days:
-        pc.update(bucket_articles_by_day(ticket_cache, zammad_users, [today]))
     daily = _load_json(ZCHAT_DAILY_PATH, {})
-    daily.update(compute_zammad_chat_daily(ticket_cache, pc, days))
+    daily.update(compute_zammad_chat_daily(ticket_cache, zammad_users, days))
     _save_json(ZCHAT_DAILY_PATH, daily)
     print(f"[refresh] чати Zammad: оновлено {len(days)} днів")
 
@@ -972,9 +1007,12 @@ def fetch_weekly_table_report(from_date, to_date):
     per_day = {}
     if sim:
         per_day.update(_weekly_sim_days(*sim))
-    # Zammad додається до Simulator (до переходу) або єдиний (після)
+    # Zammad додається до Simulator (до переходу) або єдиний (після).
+    # Кортеж (поступило, відповіли, не відповіли, передано людині): у Zammad
+    # «передано людині» = поступило − AI, тож AI = поступило − e лишається вірним.
     for d, x in _zchat_days(*zam).items():
-        z = (x.get("incoming", 0), x.get("answered", 0), x.get("missed", 0), x.get("escalated", 0))
+        inc = x.get("incoming", 0)
+        z = (inc, x.get("answered", 0), x.get("missed", 0), inc - x.get("ai", 0))
         prev = per_day.get(d, (0, 0, 0, 0))
         per_day[d] = tuple(a + b for a, b in zip(prev, z))
 
