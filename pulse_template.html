@@ -386,7 +386,7 @@
     <a href="#weekload" class="topnav-link">Навантаження</a>
     <a href="#shiftgrid" class="topnav-link">Графік змін</a>
     <a href="#nightday" class="topnav-link">Нічні vs Денні</a>
-    <a href="#simreports" class="topnav-link">Simulator-звіти</a>
+    <a href="#simreports" class="topnav-link">Звіти по чатах</a>
     <a href="#picker" class="topnav-link">По агентах</a>
   </div>
 </nav>
@@ -644,8 +644,8 @@
   </section>
 
   <section id="simreports">
-    <h2>Simulator-звіти</h2>
-    <p class="section-desc">Ринки, теми AVIA, мови й тижнева таблиця "Поступило/Відповіли/AI chats" — ті самі дашборди Simulator, які раніше збирались вручну щомісяця чи щотижня. Обери період і тип звіту, натисни «Показати», потім скопіюй у Google Таблиці.</p>
+    <h2>Звіти по чатах</h2>
+    <p class="section-desc">Ринки, теми AVIA, мови й тижнева таблиця "Поступило/Відповіли/AI chats". До 31.10.2026 включно — дані Simulator, з 1 листопада — з Zammad (мови з листопада не рахуються). Обери період і тип звіту, натисни «Показати», потім скопіюй у Google Таблиці.</p>
     <div class="range-wrap">
       <div class="range-controls">
         <div class="range-field">
@@ -681,7 +681,7 @@
           <tbody id="simrep-tbody"></tbody>
         </table>
       </div>
-      <p class="range-note">Дані тягнуться наживо з Simulator у момент натискання «Показати» (не кешуються на бекенді). Якщо бачиш помилку про токен — він сесійний і час від часу згасає, треба взяти новий (див. README pulse-dashboard-rancher).</p>
+      <p class="range-note">Дні до 31.10 тягнуться наживо з Simulator (якщо бачиш помилку про токен — він сесійний, треба взяти новий, див. README). Дні з 1 листопада — з Zammad, оновлюються разом із дашбордом (08:00 / 16:00 / 00:00). У Zammad: «Поступило» — нові розмови (новий чат або клієнт написав у закритий), «Не відповіли» — AI передав людині, а агент не відповів до закриття.</p>
     </div>
   </section>
 
@@ -1758,7 +1758,7 @@ function initTopNav(){
 }
 
 // ---------------------------------------------------------------------------
-// Simulator-звіти (ринки / AVIA-теми / мови / тижнева таблиця) — власний
+// Звіти по чатах (ринки / AVIA-теми / мови / тижнева таблиця) — власний
 // період БЕЗ обмеження RANGE_MIN/RANGE_MAX (це окремі дашборди Simulator,
 // не пов'язані з вікном Zammad-дискавері), дані тягнуться наживо з бекенду
 // (/simulator-report), нічого не кешується на клієнті.
@@ -1807,7 +1807,7 @@ async function runSimReport(){
     status.className = 'simrep-status err';
     return;
   }
-  status.textContent = 'Тягну дані з Simulator…';
+  status.textContent = 'Тягну дані…';
   status.className = 'simrep-status';
   copyBtn.disabled = true; csvBtn.disabled = true;
   table.style.display = 'none';
@@ -1823,7 +1823,7 @@ async function runSimReport(){
     }
     simrepData = body;
     renderSimReportTable(body);
-    status.textContent = `Готово · ${fmtDateShort(from)} – ${fmtDateShort(to)}` + (body.total !== undefined ? ` · разом ${body.total}` : '');
+    status.textContent = `Готово · ${fmtDateShort(from)} – ${fmtDateShort(to)}` + (body.total !== undefined ? ` · разом ${body.total}` : '') + (body.note ? ` · ${body.note}` : '');
     status.className = 'simrep-status ok';
     copyBtn.disabled = false; csvBtn.disabled = false;
   }catch(e){
