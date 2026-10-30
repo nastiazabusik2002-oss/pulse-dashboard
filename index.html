@@ -386,7 +386,7 @@
     <a href="#weekload" class="topnav-link">Навантаження</a>
     <a href="#shiftgrid" class="topnav-link">Графік змін</a>
     <a href="#nightday" class="topnav-link">Нічні vs Денні</a>
-    <a href="#simreports" class="topnav-link">Simulator-звіти</a>
+    <a href="#simreports" class="topnav-link">Звіти по чатах</a>
     <a href="#picker" class="topnav-link">По агентах</a>
   </div>
 </nav>
@@ -644,8 +644,8 @@
   </section>
 
   <section id="simreports">
-    <h2>Simulator-звіти</h2>
-    <p class="section-desc">Ринки, теми AVIA, мови й тижнева таблиця "Поступило/Відповіли/AI chats" — ті самі дашборди Simulator, які раніше збирались вручну щомісяця чи щотижня. Обери період і тип звіту, натисни «Показати», потім скопіюй у Google Таблиці.</p>
+    <h2>Звіти по чатах</h2>
+    <p class="section-desc">Ринки, теми AVIA, мови й тижнева таблиця "Поступило/Відповіли/AI chats". До 31.10.2026 включно — дані Simulator, з 1 листопада — з Zammad (мови з листопада не рахуються). Обери період і тип звіту, натисни «Показати», потім скопіюй у Google Таблиці.</p>
     <div class="range-wrap">
       <div class="range-controls">
         <div class="range-field">
@@ -681,7 +681,23 @@
           <tbody id="simrep-tbody"></tbody>
         </table>
       </div>
-      <p class="range-note">Дані тягнуться наживо з Simulator у момент натискання «Показати» (не кешуються на бекенді). Якщо бачиш помилку про токен — він сесійний і час від часу згасає, треба взяти новий (див. README pulse-dashboard-rancher).</p>
+      <p class="range-note">Дні до 31.10 тягнуться наживо з Simulator (якщо бачиш помилку про токен — він сесійний, треба взяти новий, див. README). Дні з 1 листопада — з Zammad (до 31.10 Zammad додається до Simulator), оновлюються разом із дашбордом (08:00 / 16:00 / 00:00).</p>
+      <details class="range-note" style="margin-top:8px">
+        <summary style="cursor:pointer;font-weight:600">Як рахуються чати з Zammad (та сама логіка, що в дашборді UA Support Ops)</summary>
+        <ul style="margin:8px 0 0 18px;line-height:1.55">
+          <li><b>Чат = одна розмова</b> в тикеті «Chat – сайт», у якій клієнт щось написав. Розмова — від створення тикета або його переоткриття до закриття. Клієнт написав у закритий чат — це нова розмова. Порожні відкриття (клієнт відкрив вікно чату й нічого не написав) не рахуються. «Chat – my.tickets.ua» сюди не входить.</li>
+          <li><b>День розмови</b> — день першого повідомлення клієнта (київський час). Вчорашні цифри можуть ще трохи змінитись: відповідь агента може прийти пізніше.</li>
+          <li>Кожна розмова — рівно в одній категорії, тому <b>Відповіли + Не відповіли + AI chats = Поступило</b>:
+            <ul style="margin:4px 0 0 18px">
+              <li><b>Відповіли</b> — відповів хтось із команди (спільна розмова рахується один раз);</li>
+              <li><b>AI chats</b> — відповідав лише бот, і людині чат не передавали;</li>
+              <li><b>Не відповіли</b> — людина не відповіла: розмову закрили або клієнт чекає понад 2 год.</li>
+            </ul></li>
+          <li><b>«Чат» у агента</b> — у скількох розмовах за день він відповідав (лист або публічна нотатка). Якщо відповідали двоє — розмова є в обох, тому сума по агентах буває трохи більшою за «Відповіли».</li>
+          <li>Відповідь, збережена одним кліком із закриттям, зараховується (Zammad інколи пише її на мить пізніше за закриття — допуск 5 с). Бот <code>ai_bot@ttn.global</code> агентом не вважається.</li>
+          <li><b>Чому відсоток інший, ніж у дашборді бота (supportbot):</b> бот рахує лише чати, <i>до яких він дійшов</i> («з того, що мені дали, я закрив X%»). Пульс рахує <i>весь</i> потік розмов клієнтів — включно з тими, де бот не вступав (клієнт написав, коли чат уже вів агент, тощо). Скільки чатів закрив бот — майже однаково (29.10: бот 541, Пульс 518), а різниця у відсотках — через різну базу (1150 чатів у бота проти 1344 розмов у Zammad).</li>
+        </ul>
+      </details>
     </div>
   </section>
 
@@ -696,7 +712,7 @@
 
   <footer>
     Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
-    Оновлено: 2026-10-30, 03:06 (Europe/Kiev)
+    Оновлено: 2026-10-30, 13:37 (Europe/Kiev)
   </footer>
 </div>
 
@@ -1758,7 +1774,7 @@ function initTopNav(){
 }
 
 // ---------------------------------------------------------------------------
-// Simulator-звіти (ринки / AVIA-теми / мови / тижнева таблиця) — власний
+// Звіти по чатах (ринки / AVIA-теми / мови / тижнева таблиця) — власний
 // період БЕЗ обмеження RANGE_MIN/RANGE_MAX (це окремі дашборди Simulator,
 // не пов'язані з вікном Zammad-дискавері), дані тягнуться наживо з бекенду
 // (/simulator-report), нічого не кешується на клієнті.
@@ -1807,7 +1823,7 @@ async function runSimReport(){
     status.className = 'simrep-status err';
     return;
   }
-  status.textContent = 'Тягну дані з Simulator…';
+  status.textContent = 'Тягну дані…';
   status.className = 'simrep-status';
   copyBtn.disabled = true; csvBtn.disabled = true;
   table.style.display = 'none';
@@ -1823,7 +1839,7 @@ async function runSimReport(){
     }
     simrepData = body;
     renderSimReportTable(body);
-    status.textContent = `Готово · ${fmtDateShort(from)} – ${fmtDateShort(to)}` + (body.total !== undefined ? ` · разом ${body.total}` : '');
+    status.textContent = `Готово · ${fmtDateShort(from)} – ${fmtDateShort(to)}` + (body.total !== undefined ? ` · разом ${body.total}` : '') + (body.note ? ` · ${body.note}` : '');
     status.className = 'simrep-status ok';
     copyBtn.disabled = false; csvBtn.disabled = false;
   }catch(e){
