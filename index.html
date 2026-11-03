@@ -375,6 +375,23 @@
     .picker{grid-template-columns:1fr;}
     .agent-list{max-height:280px; overflow-y:auto;}
   }
+  /* ---- розгортки й компактна таблиця «Хто зробив» ---- */
+  details.fold > summary{list-style:none; cursor:pointer; display:flex; align-items:baseline; justify-content:center; gap:.8rem;}
+  details.fold > summary::-webkit-details-marker{display:none;}
+  details.fold > summary h2{margin:0; display:inline;}
+  details.fold > summary h2::before{content:"▸"; display:inline-block; margin-right:.5rem; transition:transform .15s; color:var(--accent);}
+  details.fold[open] > summary h2::before{transform:rotate(90deg);}
+  details.fold > summary .fold-hint{font-size:.75rem; color:var(--ink-faint);}
+  details.fold[open] > summary .fold-hint{display:none;}
+  details.fold[open] > summary{margin-bottom:.6rem;}
+  table.drill-table{border-spacing:2px;}
+  .drill-table th:not(:first-child), .drill-table td:not(.name){width:auto; min-width:64px;}
+  .drill-table td{padding:.2rem .35rem;}
+  .drill-table td.name{font-size:.82rem; white-space:nowrap;}
+  .drill-table td:not(.name):not(.col-active), .drill-table td.total:not(.col-active){background:transparent; border:1px solid var(--line); border-radius:6px;}
+  .drill-table td.col-active{border-radius:6px; border:1px solid var(--accent);}
+  .mini-cell{display:flex; gap:.4rem; justify-content:center; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:.78rem; font-weight:700; white-space:nowrap;}
+  .mini-cell.empty{color:var(--ink-faint); font-weight:400;}
 </style>
 </head>
 <body>
@@ -387,7 +404,6 @@
     <a href="#shiftgrid" class="topnav-link">Графік змін</a>
     <a href="#nightday" class="topnav-link">Нічні vs Денні</a>
     <a href="#simreports" class="topnav-link">Звіти по чатах</a>
-    <a href="#picker" class="topnav-link">По агентах</a>
   </div>
 </nav>
 <div class="wrap">
@@ -395,7 +411,7 @@
   <header>
     <span class="eyebrow">Команда підтримки · TTN Global</span>
     <h1>Пульс команди</h1>
-    <p class="lede">Обери агента — побачиш зміну вчора і детальний розріз того, що він зробив у Zammad: листи, фідбеки, чати із сайту, передачі в інші відділи, замітки. Плюс сім днів динаміки з прив'язкою до графіка.</p>
+    <p class="lede">Що зробила команда в Zammad: листи, фідбеки, чати із сайту, передачі в інші відділи — по днях, по людях і за період.</p>
     <div class="kpi-row">
       <div class="kpi"><div class="v" id="kpi-touches">—</div><div class="l" id="kpi-touches-label">артиклів команди — учора</div></div>
       <div class="kpi"><div class="v" id="kpi-feedback">—</div><div class="l">фідбеків команди — учора</div></div>
@@ -407,8 +423,9 @@
   </header>
 
   <section id="trend">
-    <h2>Динаміка команди за період</h2>
-    <p class="section-desc">Хто зробив — по днях, всі категорії разом. Обери період (поля Від/До нижче) — таблиця й підсумок оновляться самі.</p>
+    <details class="fold">
+    <summary><h2>Динаміка команди за період</h2><span class="fold-hint">розгорнути</span></summary>
+    <p class="section-desc">Хто зробив — по днях. У клітинці чотири числа: листи · фідбек · чати · інший відділ. Наведи на клітинку — підказка.</p>
     <div class="rings-wrap">
       <div class="rings-controls">
         <div class="rings-control-row">
@@ -432,7 +449,6 @@
         <div class="trend-drill-header">
           <h3>Хто зробив — по днях (<span id="trend-drill-range"></span>)</h3>
         </div>
-        <p class="rating-hint">У кожній клітинці — всі категорії разом (розбивка на 4 числа: листи · фідбек · чати · інший відділ).</p>
         <div class="bars-legend">
           <span><span class="lg-dot" style="background:var(--accent)"></span>Листи</span>
           <span><span class="lg-dot" style="background:var(--sh-fidbek)"></span>Фідбек</span>
@@ -447,11 +463,12 @@
         </div>
       </div>
     </div>
+    </details>
   </section>
 
   <section id="rings">
     <h2>Хто скільки зробив</h2>
-    <p class="section-desc">Порівняння по людях за конкретний день — кожен стовпчик розбитий по типу роботи, щоб було видно не тільки скільки всього, а й скільки саме листів, фідбеків, чатів чи передач в інший відділ. Обери час зміни — і порівнюй тільки тих, хто того дня починав роботу в один і той самий час. Клік по стовпчику відкриває картку агента нижче.</p>
+    <p class="section-desc">Порівняння по людях за конкретний день — кожен стовпчик розбитий по типу роботи, щоб було видно не тільки скільки всього, а й скільки саме листів, фідбеків, чатів чи передач в інший відділ. Обери час зміни — і порівнюй тільки тих, хто того дня починав роботу в один і той самий час.</p>
     <div class="rings-wrap">
       <div class="rings-controls">
         <div class="rings-control-row">
@@ -701,18 +718,10 @@
     </div>
   </section>
 
-  <section id="picker">
-    <h2>По агентах</h2>
-    <p class="section-desc">Зліва — вся команда, відсортована за вчорашньою активністю (листи + фідбеки + передачі). Клікни на ім'я.</p>
-    <div class="picker">
-      <div class="agent-list" id="agent-list"></div>
-      <div class="detail" id="agent-detail"></div>
-    </div>
-  </section>
 
   <footer>
     Пульс команди — щоденний знімок стану команди підтримки, TTN Global. Листи/фідбеки/чати з сайту/передачі/замітки — напряму з Zammad API, зміни — з графіка, чати Симулятора — окремо (в розробці).<br>
-    Оновлено: 2026-11-03, 05:44 (Europe/Kiev)
+    Оновлено: 2026-11-03, 15:44 (Europe/Kiev)
   </footer>
 </div>
 
@@ -748,6 +757,7 @@ function totalActivity(a){ return a.yday_listy + a.yday_feedback + a.yday_chats_
 
 function renderList(){
   const list = document.getElementById('agent-list');
+  if(!list) return;   // розділ «По агентах» прибрано
   const sorted = [...AGENTS].sort((a,b)=>totalActivity(b)-totalActivity(a));
   list.innerHTML = sorted.map(a=>{
     const cat = SHIFT_CAT(a.yday_shift);
@@ -763,6 +773,7 @@ function renderList(){
 }
 
 function renderDetail(){
+  if(!document.getElementById('agent-detail')) return;   // розділ «По агентах» прибрано
   const a = AGENTS.find(x=>x.id===selectedId);
   const sd = shiftDisplay(a.yday_shift);
   const maxTouch = Math.max(...a.daily.map(d=>d.touches), 1);
@@ -921,13 +932,6 @@ function renderRings(){
 
   countEl.textContent = `${rows.length} ${rows.length===1?'агент':'агентів'} цього дня`;
 
-  chart.querySelectorAll('.bar-col').forEach(col=>{
-    col.addEventListener('click', ()=>{
-      selectedId = Number(col.dataset.id);
-      renderList(); renderDetail();
-      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
-    });
-  });
 
   chart.querySelectorAll('.bar-seg').forEach(seg=>{
     seg.addEventListener('mouseenter', (e)=>{
@@ -967,11 +971,10 @@ let selectedTrendDate = null;
 const TOUCHES_DATES = new Set(AGENTS[0].daily.map(d=>d.date));
 
 function multiGridHTML(cats){
-  return `<div class="multi-grid">
-    <span style="color:var(--accent)">${cats.listy||0}</span>
-    <span style="color:var(--sh-fidbek)">${cats.feedback||0}</span>
-    <span style="color:var(--sh-chaty)">${cats.chatz||0}</span>
-    <span style="color:var(--sh-senior)">${cats.dept||0}</span>
+  const sum = (cats.listy||0)+(cats.feedback||0)+(cats.chatz||0)+(cats.dept||0);
+  if(!sum) return `<div class="mini-cell empty">—</div>`;
+  return `<div class="mini-cell">
+    <span style="color:var(--accent)">${cats.listy||0}</span><span style="color:var(--sh-fidbek)">${cats.feedback||0}</span><span style="color:var(--sh-chaty)">${cats.chatz||0}</span><span style="color:var(--sh-senior)">${cats.dept||0}</span>
   </div>`;
 }
 
@@ -1057,19 +1060,12 @@ function renderTrendDrill(){
       const sum = (c.listy||0)+(c.feedback||0)+(c.chatz||0)+(c.dept||0);
       const t = dayMax>dayMin ? (sum-dayMin)/(dayMax-dayMin) : 0.5;
       const activeCls = d.date===selectedTrendDate ? 'col-active' : '';
-      return `<td data-date="${d.date}" class="heat-cell ${activeCls}" style="background:${heatColor(t)}" data-tip="${r.name} · ${d.wd} ${d.dateShort}: ${catsTooltipText(c)}">${multiGridHTML(c)}</td>`;
+      return `<td data-date="${d.date}" class="heat-cell ${activeCls}" data-tip="${r.name} · ${d.wd} ${d.dateShort}: ${catsTooltipText(c)}">${multiGridHTML(c)}</td>`;
     }).join('');
     const tTotal = totalMax>totalMin ? (r.value-totalMin)/(totalMax-totalMin) : 0.5;
-    return `<tr data-key="${r.id}"><td class="name">${r.name}</td>${cells}<td class="total heat-cell" style="background:${heatColor(tTotal)}" data-tip="${r.name} · разом за період: ${catsTooltipText(r.totalCats)}">${multiGridHTML(r.totalCats)}</td></tr>`;
+    return `<tr data-key="${r.id}"><td class="name">${r.name}</td>${cells}<td class="total heat-cell" data-tip="${r.name} · разом за період: ${catsTooltipText(r.totalCats)}">${multiGridHTML(r.totalCats)}</td></tr>`;
   }).join('');
 
-  tbody.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      selectedId = Number(tr.dataset.key);
-      renderList(); renderDetail();
-      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
-    });
-  });
 
   tbody.querySelectorAll('.heat-cell').forEach(cell=>{
     cell.addEventListener('mouseenter', (e)=>{
@@ -1223,13 +1219,6 @@ function renderSummaryTable(){
     }
   });
 
-  tbody.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      selectedId = Number(tr.dataset.id);
-      renderList(); renderDetail();
-      document.getElementById('picker').scrollIntoView({behavior:'smooth', block:'start'});
-    });
-  });
 
   tbody.querySelectorAll('.rating-input').forEach(inp=>{
     inp.addEventListener('change', ()=>{
