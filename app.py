@@ -226,6 +226,7 @@ CACHE_DIR = os.environ.get("CACHE_DIR", "/app/cache")
 TICKETS_CACHE_PATH = os.path.join(CACHE_DIR, "tickets_v1.json")
 CHATS_CACHE_PATH = os.path.join(CACHE_DIR, "chats.json")
 ZCHAT_DAILY_PATH = os.path.join(CACHE_DIR, "zammad_chat_daily.json")  # поденні підсумки чатів Zammad, назавжди
+AGENT_CHATS_PATH = os.path.join(CACHE_DIR, "agent_chats.json")  # «Чат» по агентах і днях — для статистики TTN Chat Desk
 
 # Точні (по-артиклові) дані тепер живлять і "Хто зробив"/"Зведення за
 # період" — раніше ці таблиці рахували дешевим способом (лише НОВІ тікети
@@ -422,7 +423,11 @@ def chat_conversations(entry, now_ts):
         повідомленням клієнта (Київ);
       • вид: answered — відповів живий агент; ai — лише бот і людині не
         передавали (пріоритет не «3»); missed — людина не відповіла, а розмову
-        закрили або клієнт чекає понад 2 год (інакше поки не рахуємо)."""
+        закрили або клієнт чекає понад 2 год (інакше поки не рахуємо).
+    4-й елемент — відповіді агентів [(created_by, секунд)]: від повідомлення клієнта,
+    на яке ще ніхто з людей не відповів (або від передачі людині — пріоритет «3»), до
+    відповіді живого агента. До передачі людині відповідь бота очікування скидає: поки
+    говорить бот, агент не винен."""
     ch = entry["chat"]
     arts = [(_ts(a["created_at"]), a) for a in entry["articles"] if a.get("created_at")]
     out = []
@@ -437,6 +442,22 @@ def chat_conversations(entry, now_ts):
         writers = list(dict.fromkeys(a["created_by"] for a in agents if not BOT_LOGIN_RE.search(a["created_by"])))
         bot = any(BOT_LOGIN_RE.search(a["created_by"]) for a in agents)
         d = datetime.fromtimestamp(cust[0], TZ).date().isoformat()
+        # Час відповіді: статті й передачі людині (пріоритет → 3) по черзі
+        handoffs = [(_ts(at), None) for at, _id, attr, _f, to in ch["events"]
+                    if attr == "priority" and str(to).startswith("3") and st["start"] < _ts(at) <= end + 5]
+        resp, waiting, human = [], None, False
+        for at, a in sorted(ep + handoffs, key=lambda x: x[0]):
+            if a is None:                      # передали людині — відлік з цього моменту
+                waiting, human = waiting or at, True
+            elif a.get("sender") == "Customer" and a.get("internal") is False:
+                waiting = waiting or at
+            elif a.get("sender") == "Agent" and a.get("internal") is False and a.get("created_by"):
+                if BOT_LOGIN_RE.search(a["created_by"]):
+                    if not human:              # після передачі «передаю колезі» від бота відлік не зупиняє
+                        waiting = None
+                elif waiting is not None:
+                    resp.append((a["created_by"], round(at - waiting)))
+                    waiting = None
         if writers:
             kind = "answered"
         elif bot and not st["prio"].startswith("3"):
@@ -445,7 +466,7 @@ def chat_conversations(entry, now_ts):
             kind = "missed"
         else:
             return  # клієнт ще чекає — поки не рахуємо
-        out.append((d, kind, writers))
+        out.append((d, kind, writers, resp))
 
     for at, _id, attr, frm, to in ch["events"]:
         t = _ts(at)
@@ -548,7 +569,7 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
     result = {
         d: {
             email: {"listy": 0, "feedback": 0, "chat": 0, "dept": 0, "notes": 0, "touches": 0, "tickets": set(),
-                    "chat_n": 0}
+                    "chat_n": 0, "resp": [0] * 7, "frs": [0, 0]}
             for email in zammad_users
         }
         for d in precise_days
@@ -597,13 +618,25 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
     for entry in ticket_cache.values():
         if entry.get("cat") != "chat" or (entry.get("chat") or {}).get("v") != 2:
             continue
-        for d, kind, writers in chat_conversations(entry, now_ts):
+        for d, kind, writers, resp in chat_conversations(entry, now_ts):
             if d not in days_set or kind != "answered":
                 continue
             for w in writers:
                 email = login_to_email.get(w)
                 if email:
                     result[d][email]["chat_n"] += 1
+            # Час відповіді: [сума с, к-сть, ≤1 хв, ≤3, ≤5, ≤15, >15] + перша відповідь [сума с, к-сть]
+            for i, (w, sec) in enumerate(resp):
+                email = login_to_email.get(w)
+                if not email:
+                    continue
+                r = result[d][email]
+                r["resp"][0] += sec
+                r["resp"][1] += 1
+                r["resp"][2 + next((k for k, lim in enumerate((60, 180, 300, 900)) if sec <= lim), 4)] += 1
+                if i == 0:
+                    r["frs"][0] += sec
+                    r["frs"][1] += 1
 
     return {
         d: {
@@ -611,6 +644,8 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
                 "listy": r["listy"],
                 "feedback": r["feedback"],
                 "chatz": r["chat_n"],
+                "resp": r["resp"],
+                "frs": r["frs"],
                 "dept": r["dept"],
                 "notes": r["notes"],
                 "touches": r["touches"],
@@ -642,7 +677,7 @@ def compute_zammad_chat_daily(ticket_cache, zammad_users, days):
         if entry.get("cat") != "chat" or (entry.get("chat") or {}).get("v") != 2:
             continue
         ch = entry["chat"]
-        for d, kind, writers in chat_conversations(entry, now_ts):
+        for d, kind, writers, _resp in chat_conversations(entry, now_ts):
             if d not in days_set:
                 continue
             if kind == "answered" and not any(w in team for w in writers):
@@ -1250,6 +1285,22 @@ def build_html(precise_cache, shifts_by_day, chats_cache, shifts_range, recent_d
 
     range_min, range_max = precise_days[0], precise_days[-1]
 
+    # Ті самі цифри «Чат» для статистики агента в TTN Chat Desk (GET /agent-chats):
+    # агент — за email, команда — «Відповіли» з поденних підсумків (до переходу — сума агентів)
+    zdaily = _load_json(ZCHAT_DAILY_PATH, {})
+    days_out, team_out, resp_out = {}, {}, {}
+    for d in precise_days:
+        row = {m["email"].lower(): range_data[d][str(m["id"])]["chatz"] for m in TEAM}
+        days_out[d] = row
+        resp_out[d] = {m["email"].lower(): {"resp": precise_cache.get(d, {}).get(m["email"], {}).get("resp", [0] * 7),
+                                            "frs": precise_cache.get(d, {}).get(m["email"], {}).get("frs", [0, 0]),
+                                            "name": m["name"]}
+                       for m in TEAM}
+        team_out[d] = zdaily[d]["answered"] if d >= CHATS_ZAMMAD_FROM and d in zdaily else sum(row.values())
+    _save_json(AGENT_CHATS_PATH, {"updated_at": datetime.now(TZ).isoformat(timespec="minutes"),
+                                  "from": range_min, "to": range_max, "days": days_out, "team": team_out,
+                                  "resp": resp_out})
+
     html = open(TEMPLATE_PATH, "r", encoding="utf-8").read()
 
     html = replace_const("AGENTS", json.dumps(agents, ensure_ascii=False, separators=(",", ":")), html)
@@ -1311,6 +1362,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/simulator-report":
             self._simulator_report(parsed)
+            return
+        if parsed.path == "/agent-chats":
+            data = _load_json(AGENT_CHATS_PATH, None)
+            if data is None:
+                self._json(503, {"error": "ще не пораховано — триває перше оновлення"})
+            else:
+                self._json(200, data)
             return
         if os.path.exists(OUTPUT_PATH):
             with open(OUTPUT_PATH, "rb") as f:
