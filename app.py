@@ -424,10 +424,12 @@ def chat_conversations(entry, now_ts):
       • вид: answered — відповів живий агент; ai — лише бот і людині не
         передавали (пріоритет не «3»); missed — людина не відповіла, а розмову
         закрили або клієнт чекає понад 2 год (інакше поки не рахуємо).
-    4-й елемент — відповіді агентів [(created_by, секунд)]: від повідомлення клієнта,
+    4-й елемент — відповіді агентів [(created_by, секунд, pickup)]: від повідомлення клієнта,
     на яке ще ніхто з людей не відповів (або від передачі людині — пріоритет «3»), до
     відповіді живого агента. До передачі людині відповідь бота очікування скидає: поки
-    говорить бот, агент не винен."""
+    говорить бот, агент не винен. pickup=True — перша відповідь людини в розмові або
+    після нової передачі від бота (це час у черзі); False — відповідь у вже розпочатому
+    діалозі з агентом (час між репліками)."""
     ch = entry["chat"]
     arts = [(_ts(a["created_at"]), a) for a in entry["articles"] if a.get("created_at")]
     out = []
@@ -445,10 +447,10 @@ def chat_conversations(entry, now_ts):
         # Час відповіді: статті й передачі людині (пріоритет → 3) по черзі
         handoffs = [(_ts(at), None) for at, _id, attr, _f, to in ch["events"]
                     if attr == "priority" and str(to).startswith("3") and st["start"] < _ts(at) <= end + 5]
-        resp, waiting, human = [], None, False
+        resp, waiting, human, pickup = [], None, False, True
         for at, a in sorted(ep + handoffs, key=lambda x: x[0]):
             if a is None:                      # передали людині — відлік з цього моменту
-                waiting, human = waiting or at, True
+                waiting, human, pickup = waiting or at, True, True
             elif a.get("sender") == "Customer" and a.get("internal") is False:
                 waiting = waiting or at
             elif a.get("sender") == "Agent" and a.get("internal") is False and a.get("created_by"):
@@ -456,8 +458,10 @@ def chat_conversations(entry, now_ts):
                     if not human:              # після передачі «передаю колезі» від бота відлік не зупиняє
                         waiting = None
                 elif waiting is not None:
-                    resp.append((a["created_by"], round(at - waiting)))
-                    waiting = None
+                    resp.append((a["created_by"], round(at - waiting), pickup))
+                    waiting, pickup = None, False
+                else:
+                    pickup = False             # агент написав першим — діалог з людиною почався
         if writers:
             kind = "answered"
         elif bot and not st["prio"].startswith("3"):
@@ -625,18 +629,20 @@ def bucket_articles_by_day(ticket_cache, zammad_users, precise_days):
                 email = login_to_email.get(w)
                 if email:
                     result[d][email]["chat_n"] += 1
-            # Час відповіді: [сума с, к-сть, ≤1 хв, ≤3, ≤5, ≤15, >15] + перша відповідь [сума с, к-сть]
-            for i, (w, sec) in enumerate(resp):
+            # resp — час між репліками в діалозі з агентом: [сума с, к-сть, ≤1 хв, ≤3, ≤5, ≤15, >15];
+            # frs — від передачі ботом (або першого повідомлення) до першої відповіді агента: [сума с, к-сть]
+            for w, sec, pickup in resp:
                 email = login_to_email.get(w)
                 if not email:
                     continue
                 r = result[d][email]
+                if pickup:
+                    r["frs"][0] += sec
+                    r["frs"][1] += 1
+                    continue
                 r["resp"][0] += sec
                 r["resp"][1] += 1
                 r["resp"][2 + next((k for k, lim in enumerate((60, 180, 300, 900)) if sec <= lim), 4)] += 1
-                if i == 0:
-                    r["frs"][0] += sec
-                    r["frs"][1] += 1
 
     return {
         d: {
