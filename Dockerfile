@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py pulse_template.html ./
+COPY app.py pulse_template.html check_stats.py ./
 
 RUN mkdir -p /app/www /app/cache
 

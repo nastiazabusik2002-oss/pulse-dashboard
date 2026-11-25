@@ -1,0 +1,124 @@
+# Дашборд "Пульс команди" — Deployment + Service + сховище для кешу.
+#
+# Секрети (Zammad-токен, Supabase-ключ) сюди НЕ пишемо — вони окремо,
+# в secret.example.yaml (заповни й застосуй його першим, або створи
+# Secret "pulse-secrets" прямо в Rancher UI з тими самими іменами ключів).
+#
+# Образ (image нижче) збирає й публікує сам GitHub Actions у репозиторії
+# pulse-dashboard (workflow build-docker.yml) — нічого руками збирати не
+# треба, просто переконайся, що пакет ghcr.io/.../pulse-dashboard публічний
+# (див. README.md), інакше Rancher не зможе його стягнути.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pulse-cache
+  namespace: anastasiia-zabusyk
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Mi
+  # storageClassName: "" -- розкоментуй і встав свій StorageClass, якщо
+  # дефолтний у кластері не підходить
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse-dashboard
+  namespace: anastasiia-zabusyk
+  labels:
+    app: pulse-dashboard
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # важливо: 2 поди одночасно писали б у той самий кеш
+  selector:
+    matchLabels:
+      app: pulse-dashboard
+  template:
+    metadata:
+      labels:
+        app: pulse-dashboard
+    spec:
+      containers:
+        - name: pulse-dashboard
+          image: ghcr.io/nastiazabusik2002-oss/pulse-dashboard:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZAMMAD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: ZAMMAD_TOKEN
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: SUPABASE_URL
+            - name: SUPABASE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: SUPABASE_SECRET_KEY
+            - name: SIMULATOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: SIMULATOR_TOKEN
+                  optional: true   # без нього дашборд просто лишає старі Zammad-числа чатів
+            - name: STATS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: STATS_TOKEN
+                  optional: true   # без нього /stats.json завжди відповідає 401
+          volumeMounts:
+            - name: cache
+              mountPath: /app/cache
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 3Gi
+          # 512Mi ліміт був замалий для нової архітектури: широкий пошук
+          # тримає в пам'яті кеш артиклів одразу по ВСІХ тікетах компанії
+          # за вікно (десятки тисяч), під час першого холодного прогону це
+          # виходило за 512Mi і под падав з OOM (exit 137), перезапускаючись
+          # знову і знову, так і не завершивши перший рахунок.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: pulse-cache
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulse-dashboard
+  namespace: anastasiia-zabusyk
+spec:
+  selector:
+    app: pulse-dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: LoadBalancer  # зовнішня IP-адреса, як у вже наявного пода на 10.11.7.131:8080
+  # додай Ingress, якщо в кластері прийнято так.

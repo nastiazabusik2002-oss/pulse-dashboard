@@ -677,13 +677,13 @@ def compute_zammad_chat_daily(ticket_cache, zammad_users, days):
     markets / avia — ті самі розмови за сайтом і AVIA-причиною."""
     team = {zu["login"] for zu in zammad_users.values()}
     days_set = set(days)
-    out = {d: {"incoming": 0, "answered": 0, "ai": 0, "missed": 0, "markets": {}, "avia": {}} for d in days}
+    out = {d: {"incoming": 0, "answered": 0, "ai": 0, "missed": 0, "markets": {}, "avia": {}, "pickups": []} for d in days}
     now_ts = time.time()
     for entry in ticket_cache.values():
         if entry.get("cat") != "chat" or (entry.get("chat") or {}).get("v") != 2:
             continue
         ch = entry["chat"]
-        for d, kind, writers, _resp in chat_conversations(entry, now_ts):
+        for d, kind, writers, resp in chat_conversations(entry, now_ts):
             if d not in days_set:
                 continue
             if kind == "answered" and not any(w in team for w in writers):
@@ -691,6 +691,11 @@ def compute_zammad_chat_daily(ticket_cache, zammad_users, days):
             o = out[d]
             o[kind] += 1
             o["incoming"] += 1
+            # pickups — секунд від передачі ботом / першого повідомлення до ПЕРШОЇ відповіді
+            # людини в розмові (для медіани й SLA у /stats.json)
+            first = next((sec for _w, sec, pickup in resp if pickup), None)
+            if kind == "answered" and first is not None:
+                o["pickups"].append(first)
             o["markets"][ch["site"]] = o["markets"].get(ch["site"], 0) + 1
             if ch["reason"].startswith("AVIA|"):
                 o["avia"][ch["reason"]] = o["avia"].get(ch["reason"], 0) + 1
@@ -1331,6 +1336,281 @@ def build_html(precise_cache, shifts_by_day, chats_cache, shifts_range, recent_d
 REFRESH_HOURS = {8, 16, 0}
 
 
+# ---------------------------------------------------------------------------
+# /stats.json — статистика відділу для глобального дашборду департаменту
+# (Максим Горин забирає щогодини). Формат "ttn-dept-stats/1".
+# Окремий потік раз на годину перераховує останні 3 дні (старіші дні беруться
+# з кешу stats_state.json) і атомарно пише cache/stats.json. HTTP лише віддає
+# готовий файл за токеном STATS_TOKEN — у Zammad/Simulator на запит не ходимо.
+# Лише агрегати: жодних імен, email, локаторів.
+# ---------------------------------------------------------------------------
+STATS_TOKEN = os.environ.get("STATS_TOKEN", "")
+STATS_PATH = os.path.join(CACHE_DIR, "stats.json")
+STATS_STATE_PATH = os.path.join(CACHE_DIR, "stats_state.json")
+STATS_DAYS = int(os.environ.get("STATS_DAYS", "60"))
+STATS_RECALC_DAYS = 3
+STATS_INTERVAL = 3600
+SLA_CHAT_MIN = 15          # норма: перша відповідь людини в чаті — до 15 хв (як у TTN Chat Desk)
+SLA_EMAIL_HOURS = 24       # норма: перша відповідь на лист — до 24 год
+# Черги листів команди — ті самі, що в огляді Zammad і в чистці черг (EN не входить)
+STATS_IM_GROUPS = "23 24 25 123 54 150 156 82 87 186 106 21 97 66".split()
+STATS_IM_EXCLUDED_CUSTOMERS = "9253 63523 9316 5029 203362 28635 113148 26660 5011 1998 277271 386344".split()
+Q_FEEDBACK = "tags:feedback_all"
+Q_INTL = (f'group_id:({" OR ".join(STATS_IM_GROUPS)})'
+          ' AND NOT tags:(spam OR feedback_all OR "kissandfly.com" OR "pre-complaints")'
+          f' AND NOT customer_id:({" OR ".join(STATS_IM_EXCLUDED_CUSTOMERS)})')
+Q_QUEUES = f"(({Q_FEEDBACK}) OR ({Q_INTL})) AND create_article_sender_id:2"   # 2 = Customer
+Q_OPEN = f"((({Q_FEEDBACK}) AND state.name:(new OR open)) OR (({Q_INTL}) AND state_id:(1 OR 2 OR 3)))"
+
+# Боти, що відповідають на листи: ai_bot@ttn.global і «Dale Chip» (chipchipdale) — їхні відповіді = автоматизація
+STATS_BOT_RE = re.compile(r"bot|^ai[_.-]|chipchipdale", re.I)
+
+_stats_lock = threading.Lock()
+
+
+def _zcount(query):
+    return int(zammad_get("/tickets/search", {"query": query, "only_total_count": "true"}).get("total_count", 0))
+
+
+def _kyiv_day_bounds_utc(day):
+    d = date.fromisoformat(day)
+    a = datetime(d.year, d.month, d.day, tzinfo=TZ).astimezone(ZoneInfo("UTC"))
+    b = (datetime(d.year, d.month, d.day, tzinfo=TZ) + timedelta(days=1)).astimezone(ZoneInfo("UTC")) - timedelta(seconds=1)
+    f = "%Y-%m-%dT%H:%M:%SZ"
+    return f"[{a.strftime(f)} TO {b.strftime(f)}]"
+
+
+def _median(xs):
+    xs = sorted(xs)
+    if not xs:
+        return None
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
+def _ticket_reply_summary(tid):
+    """Хто й коли відповів у тикеті: хвилини до першої відповіді ЛЮДИНИ (не бота) і чи відповідав бот."""
+    arts = zammad_get(f"/ticket_articles/by_ticket/{tid}")
+    agent = [a for a in arts if a.get("sender") == "Agent" and not a.get("internal") and a.get("created_at")]
+    human = [a for a in agent if not STATS_BOT_RE.search(a.get("created_by") or "")]
+    bot = len(human) < len(agent)
+    return human[0]["created_at"] if human else None, bot
+
+
+def _email_day(day, tcache):
+    """Листи черг за день (лише ті, що почав клієнт): надійшло; закрито; з них закрив бот без людини;
+    хвилини до першої відповіді людини по закритих. tcache — підсумки по тикетах (id → updated_at, ...)."""
+    rng = _kyiv_day_bounds_utc(day)
+    incoming = _zcount(f"{Q_QUEUES} AND created_at:{rng}")
+    closed = search_tickets(f"{Q_QUEUES} AND state.name:closed AND close_at:{rng}")
+    todo = [t for t in closed if (tcache.get(str(t["id"])) or {}).get("u") != t.get("updated_at")]
+
+    def one(t):
+        try:
+            first_human, bot = _ticket_reply_summary(t["id"])
+        except Exception:
+            return t, None
+        m = round(max(0, (_ts(first_human) - _ts(t["created_at"])) / 60), 1) if first_human else None
+        return t, {"u": t.get("updated_at"), "m": m, "b": bot}
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        for t, summ in pool.map(one, todo):
+            if summ:
+                tcache[str(t["id"])] = summ
+    mins, auto, known = [], 0, 0
+    for t in closed:
+        x = tcache.get(str(t["id"]))
+        if not x:
+            continue
+        known += 1
+        if x["m"] is not None:
+            mins.append(x["m"])
+        elif x["b"]:
+            auto += 1
+    # Якщо частину тикетів не вдалось прочитати — таймінги/автоматизацію за день не віддаємо
+    ok = known == len(closed)
+    return {"incoming": incoming, "closed": len(closed), "automated": auto if ok else None,
+            "resp_min": mins if ok else None, "ids": [t["id"] for t in closed]}
+
+
+def _chat_days(days, state):
+    """Чати по днях: як тижнева таблиця Пульсу. До CHATS_ZAMMAD_FROM — Simulator (+ Zammad),
+    далі — Zammad. Дні Simulator незмінні: тягнемо раз і тримаємо в stats_state.json."""
+    sim_cache = state.setdefault("sim_chats", {})
+    old = [d for d in days if d < CHATS_ZAMMAD_FROM and d not in sim_cache]
+    if old and SIMULATOR_TOKEN:
+        try:
+            for d, v in _weekly_sim_days(old[0], old[-1]).items():
+                if d in old:
+                    sim_cache[d] = list(v)
+        except Exception:
+            print("[stats] Simulator недоступний (токен?) — дні до переходу поки null")
+            traceback.print_exc()
+    zdaily = _load_json(ZCHAT_DAILY_PATH, {})
+    out = {}
+    for d in days:
+        z = zdaily.get(d)
+        sim = sim_cache.get(d) if d < CHATS_ZAMMAD_FROM else [0, 0, 0, 0]
+        if sim is None or (z is None and d >= CHATS_ZAMMAD_FROM):
+            out[d] = None
+            continue
+        z = z or {}
+        inc_z = z.get("incoming", 0)
+        p = sim[0] + inc_z
+        v = sim[1] + z.get("answered", 0)
+        m = sim[2] + z.get("missed", 0)
+        e = sim[3] + (inc_z - z.get("ai", 0))
+        out[d] = {"incoming": p, "answered": v, "missed": m, "ai": p - e,
+                  # час відповіді є лише в Zammad-днях, де Пульс уже зберігає pickups
+                  "pickups": z.get("pickups") if d >= CHATS_ZAMMAD_FROM and "pickups" in z else None}
+    return out
+
+
+STATS_METRICS = [
+    {"key": "incoming", "label": "Надійшло", "unit": "шт", "higher_is_better": None,
+     "definition": "Нові розмови в чатах команди (розмова з повідомленням клієнта; до 01.11.2026 — Simulator + Zammad, далі Zammad) "
+                   "+ нові тикети в чергах листів Feedback_form_all та International Mail за день (Київ), які почав клієнт "
+                   "(без вихідних листів, створених агентами)."},
+    {"key": "processed", "label": "Опрацьовано", "unit": "шт", "higher_is_better": True,
+     "definition": "Чати, де відповів агент команди або бот, + тикети черг листів, закриті за день "
+                   "(статус closed; спам і злиті не рахуються)."},
+    {"key": "automated", "label": "Без участі людини", "unit": "шт", "higher_is_better": True,
+     "definition": "Чати, які закрив AI-бот без передачі людині, + тикети черг листів, закриті за день, де відповідали лише боти "
+                   "(ai_bot@ttn.global, Dale Chip), а людина — ні."},
+    {"key": "backlog", "label": "Відкриті наприкінці дня", "unit": "шт", "higher_is_better": False,
+     "definition": "Відкриті тикети в чергах Feedback_form_all та International Mail (останній погодинний знімок дня). "
+                   "Минулих станів Zammad не зберігає — знімки ведемо з 25.11.2026, раніше null."},
+    {"key": "median_minutes", "label": "Медіана до першої відповіді", "unit": "хв", "higher_is_better": False,
+     "definition": "Медіана хвилин до першої відповіді людини: у чатах — від передачі ботом (або першого повідомлення клієнта); "
+                   "у листах — від створення тикета до першої відповіді агента-людини (по тикетах, закритих за день; відповіді бота не рахуються). "
+                   "Час у чатах є лише з 01.11.2026 (до того чати були в Simulator, там таймінгів немає) — раніше null."},
+    {"key": "sla_breached", "label": "Пізніше за норму", "unit": "шт", "higher_is_better": False,
+     "definition": f"Норма: чат — перша відповідь людини до {SLA_CHAT_MIN} хв; лист — перша відповідь до {SLA_EMAIL_HOURS} год. "
+                   "Кількість чатів і закритих за день тикетів, де перша відповідь людини була пізніше (закрите ботом — не рахується). До 01.11.2026 null (немає таймінгів чатів)."},
+    {"key": "chats_incoming", "label": "Чати: надійшло", "unit": "шт", "higher_is_better": None,
+     "definition": "Розмови в чатах з повідомленням клієнта (як «Поступило» в тижневій таблиці Пульсу)."},
+    {"key": "chats_answered", "label": "Чати: відповіли агенти", "unit": "шт", "higher_is_better": True,
+     "definition": "Розмови, де відповів живий агент команди."},
+    {"key": "chats_ai", "label": "Чати: закрив AI", "unit": "шт", "higher_is_better": True,
+     "definition": "Розмови, де відповідав лише бот і людині не передавали."},
+    {"key": "chats_missed", "label": "Чати: без відповіді", "unit": "шт", "higher_is_better": False,
+     "definition": "Розмови, передані людині, де ніхто з команди не відповів до закриття (або клієнт чекає понад 2 год)."},
+    {"key": "emails_incoming", "label": "Листи: надійшло", "unit": "шт", "higher_is_better": None,
+     "definition": "Нові тикети в чергах Feedback_form_all та International Mail (Zammad), які почав клієнт, за датою створення."},
+    {"key": "emails_automated", "label": "Листи: закрив AI", "unit": "шт", "higher_is_better": True,
+     "definition": "Із закритих за день тикетів черг — ті, де відповідали лише боти (ai_bot@ttn.global, Dale Chip), а людина — ні."},
+    {"key": "emails_closed", "label": "Листи: закрито", "unit": "шт", "higher_is_better": True,
+     "definition": "Тикети цих черг зі статусом closed, закриті за день (спам і злиті — окремі статуси, не входять)."},
+    {"key": "median_chat_minutes", "label": "Чати: медіана до відповіді", "unit": "хв", "higher_is_better": False,
+     "definition": "Медіана хвилин від передачі ботом / першого повідомлення до першої відповіді людини. Є з 01.11.2026, раніше null."},
+    {"key": "median_email_minutes", "label": "Листи: медіана до відповіді", "unit": "хв", "higher_is_better": False,
+     "definition": "Медіана хвилин від створення тикета до першої відповіді агента-людини (без бота), по тикетах черг, закритих за день."},
+    {"key": "oldest_hours", "label": "Найдовше без руху", "unit": "год", "higher_is_better": False,
+     "definition": "Скільки годин минуло від останнього оновлення найдовше не чіпаного відкритого тикета в чергах Feedback_form_all та International Mail (лише в now)."},
+]
+
+
+def compute_stats():
+    with _stats_lock:
+        state = _load_json(STATS_STATE_PATH, {})
+        now_k = datetime.now(TZ)
+        today = now_k.date()
+        days = _date_range(today, STATS_DAYS)
+        recalc = set(days[-STATS_RECALC_DAYS:])
+
+        # Листи: старі дні — з кешу (порахували раз), останні 3 — наново
+        em = state.setdefault("emails", {})
+        tcache = state.setdefault("tickets", {})
+        for d in reversed(days):   # спершу свіжі дні
+            if d in em and d not in recalc:
+                continue
+            try:
+                em[d] = _email_day(d, tcache)
+            except Exception:
+                print(f"[stats] листи за {d}: помилка")
+                traceback.print_exc()
+
+        # Знімок відкритих тикетів (backlog) — останнє значення дня
+        backlog_now, oldest_h = None, None
+        try:
+            backlog_now = _zcount(Q_OPEN)
+            state.setdefault("backlog", {})[today.isoformat()] = backlog_now
+            # «Найстаріший» — за останнім оновленням (скільки тикет ніхто не чіпав), не за створенням
+            oldest = zammad_get("/tickets/search", {"query": Q_OPEN, "limit": 1, "sort_by": "updated_at", "order_by": "asc"})
+            if oldest:
+                oldest_h = round((time.time() - _ts(oldest[0]["updated_at"])) / 3600, 1)
+        except Exception:
+            print("[stats] знімок відкритих: помилка")
+            traceback.print_exc()
+
+        chats = _chat_days(days, state)
+        daily = []
+        for d in days:
+            c, e = chats.get(d), em.get(d)
+            row = {"date": d}
+            row["chats_incoming"] = c["incoming"] if c else None
+            row["chats_answered"] = c["answered"] if c else None
+            row["chats_ai"] = c["ai"] if c else None
+            row["chats_missed"] = c["missed"] if c else None
+            row["emails_incoming"] = e["incoming"] if e else None
+            row["emails_closed"] = e["closed"] if e else None
+            row["emails_automated"] = e.get("automated") if e else None
+            row["incoming"] = c["incoming"] + e["incoming"] if c and e else None
+            row["processed"] = c["answered"] + c["ai"] + e["closed"] if c and e else None
+            row["automated"] = c["ai"] + e["automated"] if c and e and e.get("automated") is not None else None
+            row["backlog"] = state.get("backlog", {}).get(d)
+            pk = [s / 60 for s in c["pickups"]] if c and c.get("pickups") is not None else None
+            row["median_chat_minutes"] = round(_median(pk), 1) if pk else None
+            row["median_email_minutes"] = round(_median(e["resp_min"]), 1) if e and e.get("resp_min") else None
+            if pk is not None and e and e.get("resp_min") is not None:
+                both = pk + e["resp_min"]
+                row["median_minutes"] = round(_median(both), 1) if both else None
+                row["sla_breached"] = sum(1 for m in pk if m > SLA_CHAT_MIN) + sum(1 for m in e["resp_min"] if m > SLA_EMAIL_HOURS * 60)
+            else:
+                row["median_minutes"] = None
+                row["sla_breached"] = None
+            daily.append(row)
+
+        # Тримаємо стан лише на вікно (+ запас)
+        keep = (today - timedelta(days=STATS_DAYS + 5)).isoformat()
+        for k in ("emails", "sim_chats", "backlog"):
+            state[k] = {d: v for d, v in state.get(k, {}).items() if d >= keep}
+        live_ids = {str(i) for v in em.values() for i in v.get("ids", [])}
+        state["tickets"] = {k: v for k, v in tcache.items() if k in live_ids}
+        _save_json(STATS_STATE_PATH, state)
+
+        payload = {
+            "schema": "ttn-dept-stats/1",
+            "department": "international_support",
+            "title": "Міжнародна підтримка (чати та листи)",
+            "owner": "Анастасія Забусик",
+            "generated_at": datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tz": "Europe/Kyiv",
+            "sources": [
+                "Zammad: чати команди (розмови, логіка Пульсу команди), з 01.11.2026",
+                "Simulator.company: чати International team до 31.10.2026 (тижнева таблиця Пульсу)",
+                "Zammad: черги листів Feedback_form_all (тег feedback_all) та International Mail (групи огляду)",
+            ],
+            "metrics": STATS_METRICS,
+            "daily": daily,
+            "now": {"backlog": backlog_now, "oldest_hours": oldest_h},
+        }
+        _save_json(STATS_PATH, payload)
+        print(f"[stats] оновлено {payload['generated_at']}: {len(daily)} днів")
+        return payload
+
+
+def stats_loop():
+    time.sleep(90)  # даємо першому regenerate() стартувати
+    while True:
+        try:
+            compute_stats()
+        except Exception:
+            print("[stats] помилка:")
+            traceback.print_exc()
+        time.sleep(STATS_INTERVAL)
+
+
 def scheduler_loop():
     try:
         regenerate()
@@ -1369,6 +1649,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/simulator-report":
             self._simulator_report(parsed)
             return
+        if parsed.path == "/stats.json":
+            self._stats_json()
+            return
         if parsed.path == "/agent-chats":
             data = _load_json(AGENT_CHATS_PATH, None)
             if data is None:
@@ -1395,6 +1678,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
+
+    def _stats_json(self):
+        # Лише з заголовком Authorization: Bearer <STATS_TOKEN>; віддаємо вже пораховане
+        import hmac
+        auth = self.headers.get("Authorization", "")
+        tok = auth[7:].strip() if auth.startswith("Bearer ") else ""
+        if not STATS_TOKEN or not tok or not hmac.compare_digest(tok, STATS_TOKEN):
+            self._json(401, {"error": "unauthorized"})
+            return
+        try:
+            with open(STATS_PATH, "rb") as f:
+                body = f.read()
+        except OSError:
+            self._json(503, {"error": "stats not ready yet"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _simulator_report(self, parsed):
         # GET /simulator-report?kind=markets|avia|languages|weekly&from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1480,5 +1783,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=stats_loop, daemon=True).start()
     print(f"[app] слухаю на порту {PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
