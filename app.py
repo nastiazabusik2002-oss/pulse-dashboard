@@ -1478,7 +1478,7 @@ STATS_METRICS = [
      "definition": "Чати, які закрив AI-бот без передачі людині, + тикети черг листів, закриті за день, де відповідали лише боти "
                    "(ai_bot@ttn.global, Dale Chip), а людина — ні."},
     {"key": "backlog", "label": "Відкриті наприкінці дня", "unit": "шт", "higher_is_better": False,
-     "definition": "Відкриті тикети в чергах Feedback_form_all та International Mail (останній погодинний знімок дня). "
+     "definition": "Відкриті тикети (new / open / pending reminder за справжнім статусом) у чергах Feedback_form_all та International Mail — останній погодинний знімок дня. "
                    "Минулих станів Zammad не зберігає — знімки ведемо з 25.11.2026, раніше null."},
     {"key": "median_minutes", "label": "Медіана до першої відповіді", "unit": "хв", "higher_is_better": False,
      "definition": "Медіана хвилин до першої відповіді людини: у чатах — від передачі ботом (або першого повідомлення клієнта); "
@@ -1533,12 +1533,16 @@ def compute_stats():
         # Знімок відкритих тикетів (backlog) — останнє значення дня
         backlog_now, oldest_h = None, None
         try:
-            backlog_now = _zcount(Q_OPEN)
+            # Пошуковий індекс Zammad відстає (там «відкриті» й давно закриті тикети),
+            # тому рахуємо за справжнім state_id з відповіді: 1 new, 2 open, 3 pending reminder
+            found = search_tickets(Q_OPEN)
+            real = [t for t in found if t.get("state_id") in (1, 2, 3)]
+            backlog_now = len(real)
             state.setdefault("backlog", {})[today.isoformat()] = backlog_now
-            # «Найстаріший» — за останнім оновленням (скільки тикет ніхто не чіпав), не за створенням
-            oldest = zammad_get("/tickets/search", {"query": Q_OPEN, "limit": 1, "sort_by": "updated_at", "order_by": "asc"})
-            if oldest:
-                oldest_h = round((time.time() - _ts(oldest[0]["updated_at"])) / 3600, 1)
+            # «Найдовше без руху» — за останнім оновленням, не за створенням
+            if real:
+                oldest = min(real, key=lambda t: t.get("updated_at") or "")
+                oldest_h = round((time.time() - _ts(oldest["updated_at"])) / 3600, 1)
         except Exception:
             print("[stats] знімок відкритих: помилка")
             traceback.print_exc()
